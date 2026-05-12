@@ -15,7 +15,7 @@
     "@ory/client": "^1.15.0",
     "@ory/elements-react": "^1.1.0",
     "clsx": "^2.1.0",
-    "next": "^14.2.0",
+    "next": "^15.5.18",
     "next-runtime-env": "^3.3.0",
     "react": "^18.3.0",
     "react-dom": "^18.3.0"
