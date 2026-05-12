@@ -1,0 +1,37 @@
+version: 2
+updates:
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    groups:
+      next:
+        patterns:
+          - "next"
+          - "next-*"
+          - "eslint-config-next"
+      ory:
+        patterns:
+          - "@ory/*"
+      types:
+        patterns:
+          - "@types/*"
+      dev-tools:
+        patterns:
+          - "eslint"
+          - "eslint-*"
+          - "vitest"
+          - "@vitest/*"
+          - "@testing-library/*"
+          - "@vitejs/*"
+          - "typescript"
+          - "jsdom"
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"

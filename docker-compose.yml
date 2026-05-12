@@ -1,0 +1,54 @@
+services:
+  # ---------------------------------------------------------------
+  # Ory Kratos -- self-service identity server.
+  # SQLite in-memory for demo. Run `docker compose down -v` to wipe.
+  # ---------------------------------------------------------------
+  kratos:
+    image: oryd/kratos:v1.3.0
+    container_name: kratos
+    ports:
+      - "4433:4433"  # public API
+      - "4434:4434"  # admin API
+    environment:
+      DSN: "sqlite:///var/lib/sqlite/db.sqlite?_fk=true"
+      LOG_LEVEL: info
+    volumes:
+      - ./examples/kratos:/etc/config/kratos
+      - kratos-sqlite:/var/lib/sqlite
+    command: serve -c /etc/config/kratos/kratos.yml --dev --watch-courier
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------
+  # kratos-login-ui -- this project.
+  # Build the local image so you can iterate on changes:
+  #   docker compose up --build
+  # Or pin a published tag by replacing `build` with:
+  #   image: ghcr.io/w6d-io/kratos-login-ui:latest
+  # ---------------------------------------------------------------
+  kratos-login-ui:
+    build:
+      context: .
+      args:
+        VERSION: dev
+    container_name: kratos-login-ui
+    depends_on:
+      - kratos
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_APP_NAME: "Demo"
+      NEXT_PUBLIC_LOGO_URL: "/logo.svg"
+      NEXT_PUBLIC_FAVICON_URL: "/favicon.ico"
+      NEXT_PUBLIC_THEME_PRIMARY_COLOR: "3B82F6"
+      NEXT_PUBLIC_THEME_DARK_MODE: "true"
+      NEXT_PUBLIC_THEME_BACKGROUND_COLOR: "111827"
+      # Browser-side Kratos URL -- must be reachable from your laptop.
+      NEXT_PUBLIC_KRATOS_BROWSER_URL: "http://localhost:4433"
+      # Server-side Kratos URL -- reachable from inside the container network.
+      KRATOS_PUBLIC_URL: "http://kratos:4433"
+      NEXT_PUBLIC_DEFAULT_RETURN_URL: "http://localhost:3000/"
+      NEXT_PUBLIC_ALLOWED_RETURN_URLS: "http://localhost:3000,http://127.0.0.1:3000"
+    restart: unless-stopped
+
+volumes:
+  kratos-sqlite:
