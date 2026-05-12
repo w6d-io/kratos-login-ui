@@ -571,8 +571,8 @@ function MfaWebauthnSection({ flow }: { flow: SettingsFlow; onChanged: () => voi
 }
 
 function MfaLookupSection({ flow, onChanged }: { flow: SettingsFlow; onChanged: () => void }) {
-  if (!hasGroup(flow, 'lookup_secret')) return null
   const [submitting, setSubmitting] = useState(false)
+  if (!hasGroup(flow, 'lookup_secret')) return null
   const reveal = getInput(flow, 'lookup_secret_reveal')
   const regenerate = getInput(flow, 'lookup_secret_regenerate')
   const confirm = getInput(flow, 'lookup_secret_confirm')
