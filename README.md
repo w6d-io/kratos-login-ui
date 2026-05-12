@@ -249,7 +249,7 @@ kratosLoginUi:
     allowedReturnUrls: "https://*.example.com"
 ```
 
-The chart's release pipeline auto-bumps `kratosLoginUi.image.tag` whenever this repo cuts a new release (gated on a `CHARTS_TOKEN` secret + `CHARTS_REPO` repo variable).
+Bump `kratosLoginUi.image.tag` manually to the latest published `vX.Y.Z` (drop the leading `v` to match chart-style versioning).
 
 ### Plain Kubernetes Deployment
 

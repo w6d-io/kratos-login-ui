@@ -51,8 +51,9 @@ Examples: `feat/passkey-flow`, `fix/aal2-redirect-loop`, `chore/bump-next`, `ref
    - builds a multi-arch image (`linux/amd64` + `linux/arm64`),
    - pushes `ghcr.io/w6d-io/kratos-login-ui:vX.Y.Z` and `:latest`,
    - creates the matching git tag on `main`,
-   - publishes a GitHub release with release-drafter notes,
-   - (optional) bumps the image tag in `w6d-io/charts` if `CHARTS_TOKEN` is configured.
+   - publishes a GitHub release with release-drafter notes.
+
+You can also cut a release by pushing a `vX.Y.Z` tag directly to `main` — the same workflow picks it up.
 
 The label-to-bump mapping:
 - `major` (or `breaking`) → `X+1.0.0`
