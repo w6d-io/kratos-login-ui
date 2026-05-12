@@ -14,13 +14,13 @@ jobs:
     steps:
       - name: check_semver_label
         if: contains(github.event.pull_request.labels.*.name, 'release')
-        uses: yogevbd/enforce-label-action@2.1.0
+        uses: yogevbd/enforce-label-action@2.2.2
         with:
           REQUIRED_LABELS_ANY: "major,minor,patch"
           REQUIRED_LABELS_ANY_DESCRIPTION: "Select at least one label ['major','minor','patch']"
           BANNED_LABELS: "banned"
       - name: check_change_label
-        uses: yogevbd/enforce-label-action@2.1.0
+        uses: yogevbd/enforce-label-action@2.2.2
         with:
           REQUIRED_LABELS_ANY: "feature,bug,documentation,chores,perf,refactors,tests,maintenance"
           REQUIRED_LABELS_ANY_DESCRIPTION: "Select at least one label ['feature','bug','documentation','chores','perf','refactors','tests','maintenance']"
