@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" aria-label="Login UI">
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="currentColor" fill-opacity="0.1"/>
+  <rect x="2" y="2" width="60" height="60" rx="14" stroke="currentColor" stroke-width="2"/>
+  <path d="M22 34v-7a10 10 0 0 1 20 0v7" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="16" y="32" width="32" height="22" rx="4" stroke="currentColor" stroke-width="3.5" stroke-linejoin="round"/>
+  <circle cx="32" cy="43" r="2.5" fill="currentColor"/>
+</svg>
