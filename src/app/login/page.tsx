@@ -11,6 +11,7 @@ import { Banner } from '@/components/ui/Banner'
 import { Field } from '@/components/ui/Field'
 import { PasswordInput } from '@/components/ui/PasswordInput'
 import { Checkbox } from '@/components/ui/Checkbox'
+import { OtpInput } from '@/components/ui/OtpInput'
 import { Icons } from '@/components/ui/Icons'
 import { ProviderLogo, providerLabel } from '@/components/ui/ProviderLogo'
 import {
@@ -62,9 +63,11 @@ function LoginPageContent() {
         const idIn = getInput(data, 'identifier') || getInput(data, 'password_identifier')
         if (idIn?.value) setIdentifier(idIn.value)
         // Default to TOTP/passkey/lookup step if password group is gone (second-factor).
+        // If password is absent and only `code` is offered, this is passwordless email sign-in.
         if (!hasGroup(data, 'password') && hasGroup(data, 'totp')) setStep('totp')
         else if (!hasGroup(data, 'password') && hasGroup(data, 'webauthn')) setStep('webauthn')
         else if (!hasGroup(data, 'password') && hasGroup(data, 'lookup_secret')) setStep('lookup_secret')
+        else if (!hasGroup(data, 'password') && hasGroup(data, 'code')) setStep('code')
         else setStep('password')
         setLoading(false)
         setNetworkError(null)
@@ -158,6 +161,64 @@ function LoginPageContent() {
       } else {
         setNetworkError("Sign-in failed. Please try again.")
       }
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const onSubmitCodeRequest = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!flow) return
+    setSubmitting(true)
+    setNetworkError(null)
+    try {
+      const { data } = await createBrowserClient().updateLoginFlow({
+        flow: flow.id,
+        updateLoginFlowBody: {
+          method: 'code',
+          identifier,
+          csrf_token: getCsrfToken(flow),
+        } as UpdateLoginFlowBody,
+      })
+      if (handleContinueWith(data, returnTo)) return
+      fetchFlow(flow.id)
+    } catch (err: unknown) {
+      const r = (err as { response?: { status?: number; data?: { redirect_browser_to?: string } } })?.response
+      const status = r?.status
+      const redirect = r?.data?.redirect_browser_to
+      if (status === 422 && redirect) { window.location.href = redirect; return }
+      if (status === 400 || status === 422) fetchFlow(flow.id)
+      else if (status === 410) window.location.href = initFlowUrl('login', returnTo, { refresh, aal })
+      else setNetworkError('Could not send sign-in code. Try again.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const onSubmitCodeVerify = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!flow) return
+    setSubmitting(true)
+    setNetworkError(null)
+    try {
+      const { data } = await createBrowserClient().updateLoginFlow({
+        flow: flow.id,
+        updateLoginFlowBody: {
+          method: 'code',
+          code,
+          csrf_token: getCsrfToken(flow),
+        } as UpdateLoginFlowBody,
+      })
+      if (handleContinueWith(data, returnTo)) return
+      fetchFlow(flow.id)
+    } catch (err: unknown) {
+      const r = (err as { response?: { status?: number; data?: { redirect_browser_to?: string } } })?.response
+      const status = r?.status
+      const redirect = r?.data?.redirect_browser_to
+      if (status === 422 && redirect) { window.location.href = redirect; return }
+      if (status === 400 || status === 422) fetchFlow(flow.id)
+      else if (status === 410) window.location.href = initFlowUrl('login', returnTo, { refresh, aal })
+      else setNetworkError('Code rejected. Please try again.')
     } finally {
       setSubmitting(false)
     }
@@ -281,18 +342,65 @@ function LoginPageContent() {
   }
 
   // ── Step: code-based passwordless login ─────────────────────────────
+  // Two sub-stages, derived from flow state: before the code is sent, only
+  // identifier+submit are in the flow; after Kratos sends the email, it adds
+  // a `code` input node. We render off that signal so a refresh on the verify
+  // page still shows the OTP form.
   if (step === 'code') {
+    const codeField = getInput(flow, 'code')
+    const codeSent = !!codeField
+    const idErr = idField?.errors?.[0]
+    const codeErr = codeField?.errors?.[0]
     return (
       <div className="card" style={{ width: '100%', maxWidth: 'var(--content-w)' }}>
         <div className="card-head">
           <h1>Email sign-in</h1>
-          <p>Enter the code we sent to your email.</p>
+          <p>
+            {codeSent
+              ? <>We sent a 6-digit code to <strong>{identifier || 'your email'}</strong>.</>
+              : 'Enter your email and we’ll send you a sign-in code.'}
+          </p>
         </div>
         <div className="card-body">
-          <Banner tone="warn" title="Code-based sign-in not yet supported in this UI">
-            This Kratos instance is configured for passwordless email sign-in,
-            which is not implemented in this UI yet. Use a different method.
-          </Banner>
+          {networkError && <Banner tone="danger" title="Network error">{networkError}</Banner>}
+          {banners.map((b, i) => <Banner key={i} tone={b.tone} title={b.title}>{b.body}</Banner>)}
+          {codeSent ? (
+            <form onSubmit={onSubmitCodeVerify} noValidate>
+              <Field label="Code" htmlFor="login-code" error={codeErr}>
+                <OtpInput value={code} onChange={setCode} />
+              </Field>
+              <button type="submit" className="btn btn-primary btn-block mt-4" disabled={submitting || code.length !== 6}>
+                {submitting ? <><span className="spinner" /> Verifying…</> : 'Sign in'}
+              </button>
+              <button
+                type="button"
+                className="btn-link mt-3"
+                onClick={() => { window.location.href = initFlowUrl('login', returnTo, { refresh, aal }) }}
+              >
+                Send a new code
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={onSubmitCodeRequest} noValidate>
+              <Field label={idField?.label || 'Email'} required htmlFor="login-id" error={idErr}>
+                <input
+                  id="login-id"
+                  name={idField?.name || 'identifier'}
+                  type="email"
+                  className={`input ${idErr ? 'has-error' : ''}`}
+                  value={identifier}
+                  onChange={(e) => setIdentifier(e.target.value)}
+                  placeholder="you@company.com"
+                  autoComplete="username"
+                  autoFocus
+                  required
+                />
+              </Field>
+              <button type="submit" className="btn btn-primary btn-block mt-4" disabled={submitting || !identifier}>
+                {submitting ? <><span className="spinner" /> Sending…</> : 'Send sign-in code'}
+              </button>
+            </form>
+          )}
         </div>
         <div className="card-foot"><Link href="/login">Back to sign-in</Link></div>
       </div>
