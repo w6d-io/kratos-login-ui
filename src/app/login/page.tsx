@@ -201,10 +201,18 @@ function LoginPageContent() {
     setSubmitting(true)
     setNetworkError(null)
     try {
+      // Kratos's login code method requires `identifier` on every submit —
+      // unlike verification/recovery, where it's only needed for the request
+      // step. Without it the verify POST returns 400 "Property identifier is
+      // missing". We hang onto the value from the request stage in React
+      // state; on `sent_email` Kratos re-emits the identifier node as a
+      // hidden input with an empty value, so we can't recover it from the flow.
+      const idValue = identifier || getInput(flow, 'identifier')?.value || ''
       const { data } = await createBrowserClient().updateLoginFlow({
         flow: flow.id,
         updateLoginFlowBody: {
           method: 'code',
+          identifier: idValue,
           code,
           csrf_token: getCsrfToken(flow),
         } as UpdateLoginFlowBody,
