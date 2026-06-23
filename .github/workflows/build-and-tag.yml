@@ -107,7 +107,7 @@ jobs:
           git push origin ${{ steps.version.outputs.tag }} 2>/dev/null || echo "Tag already pushed, skipping"
 
       - name: Create GitHub Release
-        uses: release-drafter/release-drafter@v6
+        uses: release-drafter/release-drafter@v7
         with:
           config-name: release-drafter.yml
           version: ${{ steps.version.outputs.tag }}
