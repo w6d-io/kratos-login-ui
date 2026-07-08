@@ -31,3 +31,12 @@ yarn-error.log*
 next-env.d.ts
 
 certificates
+CLAUDE.md
+.claude-flow/
+.claude/
+.swarm/
+agentdb.rvf
+agentdb.rvf.lock
+agentdb.rvf.lock
+ruvector.db
+.mcp.json
