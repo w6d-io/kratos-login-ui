@@ -112,13 +112,111 @@ export function hasGroup(flow: AnyFlow | null, group: string): boolean {
 }
 
 /** Available auth methods on a login flow (after identifier-first or for second-factor). */
-export function availableMethods(flow: LoginFlow | null): Array<'password' | 'oidc' | 'totp' | 'webauthn' | 'lookup_secret' | 'code'> {
+export function availableMethods(flow: LoginFlow | null): Array<'password' | 'oidc' | 'totp' | 'webauthn' | 'passkey' | 'lookup_secret' | 'code'> {
   if (!flow) return []
   const groups = new Set<string>()
   for (const n of flow.ui?.nodes ?? []) {
     if (n.group && n.group !== 'default') groups.add(n.group)
   }
   return Array.from(groups) as never
+}
+
+/**
+ * WebAuthn / passkey support. Kratos ships a helper script as a flow node
+ * (type=script, src=<kratos>/.well-known/ory/webauthn.js). Loading it defines
+ * window.oryPasskeyLogin / oryPasskeyRegistration / oryPasskeySettingsRegistration
+ * / oryWebAuthnLogin. Trigger button nodes carry `onclickTrigger` naming the
+ * function to call; the script reads the ceremony options from the group's
+ * hidden inputs (passkey_challenge / passkey_create_data) or the trigger's
+ * value (webauthn), runs navigator.credentials, writes the result into the
+ * hidden result input (passkey_login / passkey_register / ...) and submits
+ * the surrounding <form> — so the trigger and hidden inputs MUST live inside
+ * a real form posting to flow.ui.action.
+ */
+export interface UiScriptNode {
+  src: string
+  async?: boolean
+  referrerpolicy?: string
+  crossorigin?: string
+  integrity?: string
+  type?: string
+  id?: string
+  nonce?: string
+}
+
+/** All script nodes on the flow (Kratos's webauthn.js loader). */
+export function getScriptNodes(flow: AnyFlow | null): UiScriptNode[] {
+  if (!flow) return []
+  return (flow.ui?.nodes ?? [])
+    .filter((n) => n.type === 'script')
+    .map((n) => n.attributes as unknown as UiScriptNode)
+    .filter((a) => !!a.src)
+}
+
+export interface UiTriggerButton {
+  name: string
+  value: string
+  label: string
+  /** window function name to invoke, e.g. 'oryPasskeyLogin'. */
+  onclickTrigger?: string
+}
+
+/** Find a button-type input node by name (e.g. 'passkey_login_trigger'). */
+export function getTriggerButton(flow: AnyFlow | null, name: string): UiTriggerButton | null {
+  if (!flow) return null
+  for (const n of flow.ui?.nodes ?? []) {
+    if (n.type !== 'input') continue
+    const attrs = n.attributes as UiNodeInputAttributes & { onclickTrigger?: string }
+    if (attrs.name !== name || attrs.type !== 'button') continue
+    return {
+      name: attrs.name,
+      value: attrs.value === undefined || attrs.value === null ? '' : String(attrs.value),
+      label: n.meta?.label?.text || '',
+      onclickTrigger: attrs.onclickTrigger,
+    }
+  }
+  return null
+}
+
+/** Hidden inputs of a group, for re-rendering inside a native form (csrf excluded). */
+export function getHiddenInputs(flow: AnyFlow | null, group: string): Array<{ name: string; value: string }> {
+  if (!flow) return []
+  const out: Array<{ name: string; value: string }> = []
+  for (const n of flow.ui?.nodes ?? []) {
+    if (n.type !== 'input' || n.group !== group) continue
+    const attrs = n.attributes as UiNodeInputAttributes
+    if (attrs.type !== 'hidden' || attrs.name === 'csrf_token') continue
+    out.push({
+      name: attrs.name,
+      value: attrs.value === undefined || attrs.value === null ? '' : String(attrs.value),
+    })
+  }
+  return out
+}
+
+export interface PasskeyCredential {
+  /** Credential id — the value to POST as `passkey_remove`. */
+  id: string
+  label: string
+  addedAt?: string
+}
+
+/** Registered passkeys on a settings flow (one `passkey_remove` node each). */
+export function getPasskeyCredentials(flow: AnyFlow | null): PasskeyCredential[] {
+  if (!flow) return []
+  const out: PasskeyCredential[] = []
+  for (const n of flow.ui?.nodes ?? []) {
+    if (n.group !== 'passkey' || n.type !== 'input') continue
+    const attrs = n.attributes as UiNodeInputAttributes
+    if (attrs.name !== 'passkey_remove' || attrs.value === undefined || attrs.value === null) continue
+    const ctx = (n.meta?.label as { context?: { display_name?: string; added_at?: string } } | undefined)?.context
+    out.push({
+      id: String(attrs.value),
+      label: ctx?.display_name || n.meta?.label?.text || 'Passkey',
+      addedAt: ctx?.added_at,
+    })
+  }
+  return out
 }
 
 function mapInput(n: UiNode): FlowField {

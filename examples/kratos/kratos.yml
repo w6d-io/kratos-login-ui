@@ -11,7 +11,7 @@ serve:
     cors:
       enabled: true
       allowed_origins:
-        - http://localhost:3000
+        - http://localhost:3001
       allowed_methods:
         - POST
         - GET
@@ -30,22 +30,35 @@ serve:
     base_url: http://localhost:4434/
 
 selfservice:
-  default_browser_return_url: http://localhost:3000/
+  default_browser_return_url: http://localhost:3001/
   allowed_return_urls:
-    - http://localhost:3000
-    - http://127.0.0.1:3000
+    - http://localhost:3001
+    - http://127.0.0.1:3001
 
   methods:
     password:
       enabled: true
     code:
       enabled: true
+      passwordless_enabled: true
     totp:
       enabled: true
       config:
         issuer: kratos-login-ui-demo
     lookup_secret:
       enabled: true
+    # Passkeys (discoverable WebAuthn credentials). rp.id must be the
+    # top-level domain the UI is served on; origins must list the EXACT
+    # scheme+host+port of the page triggering the ceremony. The UI runs on
+    # localhost:3001 (Kratos itself is on :4433 but never renders the page).
+    passkey:
+      enabled: true
+      config:
+        rp:
+          display_name: kratos-login-ui demo
+          id: localhost
+          origins:
+            - http://localhost:3001
     link:
       enabled: true
     profile:
@@ -53,36 +66,40 @@ selfservice:
 
   flows:
     error:
-      ui_url: http://localhost:3000/error
+      ui_url: http://localhost:3001/error
 
     settings:
-      ui_url: http://localhost:3000/settings
+      ui_url: http://localhost:3001/settings
       privileged_session_max_age: 15m
       required_aal: highest_available
 
     recovery:
       enabled: true
       use: code
-      ui_url: http://localhost:3000/recovery
+      ui_url: http://localhost:3001/recovery
 
     verification:
       enabled: true
       use: code
-      ui_url: http://localhost:3000/verification
+      ui_url: http://localhost:3001/verification
       after:
-        default_browser_return_url: http://localhost:3000/
+        default_browser_return_url: http://localhost:3001/
 
     logout:
       after:
-        default_browser_return_url: http://localhost:3000/login
+        default_browser_return_url: http://localhost:3001/login
 
     login:
-      ui_url: http://localhost:3000/login
+      ui_url: http://localhost:3001/login
       lifespan: 10m
 
     registration:
+      # Self-registration switch — managed at runtime by jinbe
+      # (/api/admin/auth/methods → kuma Settings). false = accounts are
+      # created only by administrators (kuma Users → create + invite).
+      enabled: true
       lifespan: 10m
-      ui_url: http://localhost:3000/register
+      ui_url: http://localhost:3001/register
       after:
         password:
           hooks:
@@ -97,7 +114,7 @@ secrets:
   cookie:
     - DEMO_DO_NOT_USE_IN_PROD_PLEASE_CHANGE_ME_32+
   cipher:
-    - DEMO_DO_NOT_USE_IN_PROD_PLEASE_CHANGE_ME_32+
+    - DEMO_DO_NOT_USE_IN_PROD_CHANGEME
 
 ciphers:
   algorithm: xchacha20-poly1305
