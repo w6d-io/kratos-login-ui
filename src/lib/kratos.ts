@@ -1,15 +1,23 @@
 import { Configuration, FrontendApi } from '@ory/client'
+import { env } from 'next-runtime-env'
 import { config } from './config'
 
+// Browser-facing Kratos base URL.
+// NEXT_PUBLIC_KRATOS_BROWSER_URL set → use it (dev servers, split-domain
+// deployments — the docker-compose quick start relies on this).
+// Unset → same-origin (production behind Oathkeeper, which proxies
+// /self-service and /sessions on the app domain).
+export function kratosBrowserBase(): string {
+  const configured = env('NEXT_PUBLIC_KRATOS_BROWSER_URL')
+  if (configured) return configured
+  return typeof window !== 'undefined' ? window.location.origin : config.kratos.browserUrl
+}
+
 // Client-side Kratos API (browser requests)
-// Uses window.location.origin so it works on any deployment domain
 export function createBrowserClient() {
-  const basePath = typeof window !== 'undefined'
-    ? window.location.origin
-    : config.kratos.browserUrl
   return new FrontendApi(
     new Configuration({
-      basePath,
+      basePath: kratosBrowserBase(),
       baseOptions: {
         withCredentials: true,
       },
@@ -29,15 +37,15 @@ export function createServerClient() {
 // Flow types
 export type FlowType = 'login' | 'registration' | 'recovery' | 'settings' | 'verification'
 
-// Helper to get flow URL — uses relative paths (Oathkeeper routes to Kratos)
+// Helper to get flow URL — same base rules as createBrowserClient
 export function getFlowInitUrl(flowType: FlowType, returnTo?: string): string {
-  const base = `/self-service/${flowType}/browser`
+  const base = `${kratosBrowserBase()}/self-service/${flowType}/browser`
   return returnTo ? `${base}?return_to=${encodeURIComponent(returnTo)}` : base
 }
 
 // Helper to get flow fetch URL
 export function getFlowFetchUrl(flowType: FlowType, flowId: string): string {
-  return `/self-service/${flowType}/flows?id=${flowId}`
+  return `${kratosBrowserBase()}/self-service/${flowType}/flows?id=${flowId}`
 }
 
 // Extract error messages from Kratos UI nodes

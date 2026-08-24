@@ -496,7 +496,24 @@ a:hover { text-decoration: underline; }
   color: var(--fg-secondary);
   line-height: 1.45;
 }
-.checkbox-row input { display: none; }
+/* Visually hidden but still in the a11y tree and keyboard-focusable —
+   display:none removed the checkbox from screen readers and Tab order. */
+.checkbox-row input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.checkbox-row input:focus-visible + .checkbox-mark {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
 .checkbox-mark {
   width: 16px;
   height: 16px;

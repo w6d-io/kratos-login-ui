@@ -34,7 +34,9 @@ services:
     depends_on:
       - kratos
     ports:
-      - "3000:3000"
+      # Host port 3001: 3000 is frequently occupied on dev machines, and the
+      # demo kratos.yml (ui_urls, CORS, passkey rp origins) points at :3001.
+      - "3001:3000"
     environment:
       NEXT_PUBLIC_APP_NAME: "Demo"
       NEXT_PUBLIC_LOGO_URL: "/logo.svg"
@@ -46,8 +48,8 @@ services:
       NEXT_PUBLIC_KRATOS_BROWSER_URL: "http://localhost:4433"
       # Server-side Kratos URL -- reachable from inside the container network.
       KRATOS_PUBLIC_URL: "http://kratos:4433"
-      NEXT_PUBLIC_DEFAULT_RETURN_URL: "http://localhost:3000/"
-      NEXT_PUBLIC_ALLOWED_RETURN_URLS: "http://localhost:3000,http://127.0.0.1:3000"
+      NEXT_PUBLIC_DEFAULT_RETURN_URL: "http://localhost:3001/"
+      NEXT_PUBLIC_ALLOWED_RETURN_URLS: "http://localhost:3001,http://127.0.0.1:3001"
     restart: unless-stopped
 
 volumes:

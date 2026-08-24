@@ -7,6 +7,7 @@ import type { LoginFlow, UpdateLoginFlowBody } from '@ory/client'
 import { initFlowUrl } from '@/lib/ory'
 import { Loading } from '@/components/Loading'
 import { createBrowserClient } from '@/lib/kratos'
+import { config, isReturnUrlAllowed } from '@/lib/config'
 import { Banner } from '@/components/ui/Banner'
 import { Field } from '@/components/ui/Field'
 import { PasswordInput } from '@/components/ui/PasswordInput'
@@ -23,6 +24,7 @@ import {
   handleContinueWith,
 } from '@/lib/kratos-flow'
 import { extractFlowBanners, detectUrlBanner } from '@/lib/flow-messages'
+import { WebAuthnTriggerForm } from '@/components/ui/OryWebAuthn'
 
 type Step = 'password' | 'totp' | 'webauthn' | 'lookup_secret' | 'code'
 
@@ -67,7 +69,9 @@ function LoginPageContent() {
         if (!hasGroup(data, 'password') && hasGroup(data, 'totp')) setStep('totp')
         else if (!hasGroup(data, 'password') && hasGroup(data, 'webauthn')) setStep('webauthn')
         else if (!hasGroup(data, 'password') && hasGroup(data, 'lookup_secret')) setStep('lookup_secret')
-        else if (!hasGroup(data, 'password') && hasGroup(data, 'code')) setStep('code')
+        // Passkey renders on the default card — don't collapse a
+        // passkey+code flow into the code-only step.
+        else if (!hasGroup(data, 'password') && !hasGroup(data, 'passkey') && hasGroup(data, 'code')) setStep('code')
         else setStep('password')
         setLoading(false)
         setNetworkError(null)
@@ -97,8 +101,29 @@ function LoginPageContent() {
         let needsStepUp = false
         try {
           await createBrowserClient().toSession()
-          needsStepUp = true // 200 = session present
+          // 200 = the session already satisfies Kratos' required AAL. Forcing
+          // aal2 here would hand an identity with NO second factor a dead-end
+          // flow (zero method groups). Unless the caller explicitly asked for
+          // re-auth (refresh/aal params), just bounce to the destination.
+          if (!refresh && !aal) {
+            let target = returnTo && isReturnUrlAllowed(returnTo) ? returnTo : config.defaultReturnUrl
+            // A default that points back at this UI's own root or /login
+            // would loop (the root route redirects to /login) — land the
+            // already-signed-in user on /settings instead.
+            try {
+              const u = new URL(target, window.location.origin)
+              if (u.origin === window.location.origin && (u.pathname === '/' || u.pathname === '/login')) {
+                target = '/settings'
+              }
+            } catch {
+              target = '/settings'
+            }
+            window.location.href = target
+            return
+          }
         } catch (e) {
+          // 403 session_aal2_required = the identity HAS a second factor and
+          // the session is aal1 — this is the genuine step-up case.
           const r = (e as { response?: { status?: number; data?: { error?: { id?: string } } } })?.response
           if (r?.status === 403 && r?.data?.error?.id === 'session_aal2_required') needsStepUp = true
         }
@@ -326,11 +351,24 @@ function LoginPageContent() {
           <p>Confirm with the device that has your passkey.</p>
         </div>
         <div className="card-body">
-          <Banner tone="warn" title="Passkey not yet supported in this UI">
-            Passkey / WebAuthn challenges require a browser-side credential prompt
-            that this UI does not implement yet. Use your authenticator app or a
-            backup code instead.
-          </Banner>
+          {networkError && <Banner tone="danger" title="Network error">{networkError}</Banner>}
+          {banners.map((b, i) => <Banner key={i} tone={b.tone} title={b.title}>{b.body}</Banner>)}
+          {/* Kratos's webauthn.js handles the whole ceremony: it reads the
+              challenge from the flow's hidden inputs, prompts the browser,
+              writes the assertion into the result input and POSTs the form
+              to flow.ui.action. Kratos 303s back here (with flow messages
+              on failure). Second-factor security keys use the `webauthn`
+              group; first-factor passkeys use `passkey`. */}
+          {(hasGroup(flow, 'webauthn') || hasGroup(flow, 'passkey')) && (
+            <WebAuthnTriggerForm
+              flow={flow}
+              group={hasGroup(flow, 'webauthn') ? 'webauthn' : 'passkey'}
+              triggerName={hasGroup(flow, 'webauthn') ? 'webauthn_login_trigger' : 'passkey_login_trigger'}
+              className="btn btn-primary btn-block"
+            >
+              <Icons.Fingerprint size={14} /> Use passkey
+            </WebAuthnTriggerForm>
+          )}
           <div className="btn-row mt-4">
             {methods.includes('totp') && (
               <button type="button" className="btn btn-secondary btn-block" onClick={() => setStep('totp')}>
@@ -408,6 +446,11 @@ function LoginPageContent() {
                 {submitting ? <><span className="spinner" /> Sending…</> : 'Send sign-in code'}
               </button>
             </form>
+          )}
+          {!codeSent && methods.includes('password') && (
+            <button type="button" className="btn-link mt-3" onClick={() => setStep('password')}>
+              Use password instead
+            </button>
           )}
         </div>
         <div className="card-foot"><Link href="/login">Back to sign-in</Link></div>
@@ -603,13 +646,31 @@ function LoginPageContent() {
           </form>
         )}
 
-        {!refreshing && (hasGroup(flow, 'webauthn') || hasGroup(flow, 'totp')) && (
+        {/* Passwordless fallback: on a fresh mixed flow (password + code both
+            offered) the code method is only a local step switch — Kratos drops
+            the password group once the code email is sent, so the re-fetched
+            flow lands back on the code step by itself. */}
+        {!refreshing && hasGroup(flow, 'password') && methods.includes('code') && (
+          <button type="button" className="btn-link mt-3" onClick={() => setStep('code')}>
+            Sign in with a one-time code instead
+          </button>
+        )}
+
+        {!refreshing && (hasGroup(flow, 'passkey') || hasGroup(flow, 'webauthn') || hasGroup(flow, 'totp')) && (
           <>
             <div className="divider-text" style={{ margin: '20px 0 16px' }}>or continue with</div>
             <div className="oidc-grid">
+              {/* Passkey triggers the browser ceremony directly — no extra
+                  step. Ory's script posts the form once the credential
+                  resolves; discoverable credentials need no identifier. */}
+              {hasGroup(flow, 'passkey') && (
+                <WebAuthnTriggerForm flow={flow} group="passkey" triggerName="passkey_login_trigger" className="oidc-btn">
+                  <Icons.Fingerprint size={16} /> Passkey
+                </WebAuthnTriggerForm>
+              )}
               {hasGroup(flow, 'webauthn') && (
                 <button type="button" className="oidc-btn" onClick={() => setStep('webauthn')}>
-                  <Icons.Fingerprint size={16} /> Passkey
+                  <Icons.Fingerprint size={16} /> Security key
                 </button>
               )}
               {hasGroup(flow, 'totp') && (
