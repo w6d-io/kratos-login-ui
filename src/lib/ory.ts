@@ -1,15 +1,17 @@
-// Flow URLs are relative paths, so they work on any deployment domain without
-// needing the runtime origin. (getOryConfig/oryConfig were dead code feeding the
-// unused @ory/elements-react OryProvider — removed; they broke `next build`'s
+// Flow URLs share createBrowserClient's base rules: explicit
+// NEXT_PUBLIC_KRATOS_BROWSER_URL wins, otherwise same-origin (Oathkeeper).
+// (getOryConfig/oryConfig were dead code feeding the unused
+// @ory/elements-react OryProvider — removed; they broke `next build`'s
 // type-check against elements-react's ProjectConfiguration.)
+import { kratosBrowserBase } from "./kratos";
 
-/** Build flow initiation URL — uses relative path so it works on any domain */
+/** Build flow initiation URL against the browser-facing Kratos base */
 export function initFlowUrl(
   flowType: string,
   returnTo?: string,
   opts?: { refresh?: boolean; aal?: "aal1" | "aal2" },
 ): string {
-  const base = `/self-service/${flowType}/browser`;
+  const base = `${kratosBrowserBase()}/self-service/${flowType}/browser`;
   const params = new URLSearchParams();
   if (returnTo) params.set("return_to", returnTo);
   // refresh=true forces Kratos to bump authenticated_at even if a session

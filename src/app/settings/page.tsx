@@ -15,10 +15,12 @@ import {
   getCsrfToken,
   getInputs,
   getInput,
+  getPasskeyCredentials,
   hasGroup,
   handleContinueWith,
 } from '@/lib/kratos-flow'
 import { extractFlowBanners } from '@/lib/flow-messages'
+import { WebAuthnTriggerForm } from '@/components/ui/OryWebAuthn'
 
 type Tab = 'profile' | 'password' | 'mfa' | 'sessions' | 'danger'
 
@@ -173,7 +175,8 @@ function SettingsPageContent() {
       const e2 = err as { response?: { status?: number; data?: { redirect_browser_to?: string } } }
       const status = e2?.response?.status
       const redirect = e2?.response?.data?.redirect_browser_to
-      if (status === 400 || status === 422) fetchFlow(flow.id)
+      if (status === 422 && redirect) window.location.href = redirect
+      else if (status === 400 || status === 422) fetchFlow(flow.id)
       else if (status === 403 && redirect) window.location.href = redirect
       else if (status === 403) {
         window.location.href = `/login?refresh=true&return_to=${encodeURIComponent(window.location.href)}`
@@ -199,7 +202,8 @@ function SettingsPageContent() {
       const e2 = err as { response?: { status?: number; data?: { redirect_browser_to?: string } } }
       const status = e2?.response?.status
       const redirect = e2?.response?.data?.redirect_browser_to
-      if (status === 400 || status === 422) fetchFlow(flow.id)
+      if (status === 422 && redirect) window.location.href = redirect
+      else if (status === 400 || status === 422) fetchFlow(flow.id)
       else if (status === 403 && redirect) {
         // Privileged session expired — Kratos returns redirect to /login?refresh=true.
         window.location.href = redirect
@@ -545,27 +549,73 @@ function MfaTotpSection({ flow, onChanged }: { flow: SettingsFlow; onChanged: ()
   )
 }
 
-function MfaWebauthnSection({ flow }: { flow: SettingsFlow; onChanged: () => void }) {
-  if (!hasGroup(flow, 'webauthn')) return null
-  const remove = getInput(flow, 'webauthn_remove')
-  const enrolled = !!remove
+function MfaWebauthnSection({ flow, onChanged }: { flow: SettingsFlow; onChanged: () => void }) {
+  const [submitting, setSubmitting] = useState<string | null>(null)
+  if (!hasGroup(flow, 'passkey')) return null
+  const passkeys = getPasskeyCredentials(flow)
+
+  const removePasskey = async (id: string) => {
+    setSubmitting(id)
+    try {
+      const body = { method: 'passkey', passkey_remove: id, csrf_token: getCsrfToken(flow) } as UpdateSettingsFlowBody
+      const { data } = await createBrowserClient().updateSettingsFlow({ flow: flow.id, updateSettingsFlowBody: body })
+      if (handleContinueWith(data)) return
+      onChanged()
+    } catch (err: unknown) {
+      // Same privileged-session dance as TOTP: removal is sensitive, Kratos
+      // 403s with redirect_browser_to → /login?refresh=true when stale.
+      const e2 = err as { response?: { status?: number; data?: { redirect_browser_to?: string } } }
+      const status = e2?.response?.status
+      const redirect = e2?.response?.data?.redirect_browser_to
+      if (status === 403 && redirect) window.location.assign(redirect)
+      else if (status === 403) {
+        window.location.assign(`/login?refresh=true&return_to=${encodeURIComponent(window.location.href)}`)
+      } else if (status === 410) window.location.reload()
+      else onChanged()
+    } finally { setSubmitting(null) }
+  }
+
   return (
     <div className="settings-row">
       <div className="settings-row-content">
         <div className="settings-row-title">
-          Passkeys & security keys {enrolled && <span className="badge success">Active</span>}
+          Passkeys {passkeys.length > 0 && <span className="badge success">Active</span>}
         </div>
         <div className="settings-row-meta">
           Use Face ID, Touch ID, or a hardware security key to sign in without a password.
         </div>
-        <div className="settings-row-meta mt-1" style={{ color: 'var(--warn)' }}>
-          Coming soon — passkey enrollment requires a browser credential prompt
-          that this UI does not implement yet.
-        </div>
+        {passkeys.length > 0 && (
+          <div className="mt-3" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {passkeys.map((pk) => (
+              <div key={pk.id} className="row" style={{ gap: 10, alignItems: 'center' }}>
+                <Icons.Fingerprint size={15} />
+                <span style={{ flex: 1 }}>
+                  {pk.label}
+                  {pk.addedAt && (
+                    <span className="muted" style={{ marginLeft: 8, fontSize: 12 }}>
+                      added {new Date(pk.addedAt).toLocaleDateString()}
+                    </span>
+                  )}
+                </span>
+                <button
+                  className="btn btn-secondary"
+                  disabled={submitting === pk.id}
+                  onClick={() => removePasskey(pk.id)}
+                >
+                  {submitting === pk.id ? <span className="spinner" /> : 'Remove'}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
-      <button className="btn btn-secondary" disabled>
+      {/* Enrollment is a native form POST driven by Ory's webauthn.js:
+          the browser creates the credential, the script fills
+          passkey_settings_register and submits — Kratos 303s back to
+          /settings?flow=... which this page already handles. */}
+      <WebAuthnTriggerForm flow={flow} group="passkey" triggerName="passkey_register_trigger" className="btn btn-secondary">
         <Icons.Plus size={14} /> Add a passkey
-      </button>
+      </WebAuthnTriggerForm>
     </div>
   )
 }

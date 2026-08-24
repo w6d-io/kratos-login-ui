@@ -20,6 +20,9 @@
               "code": {
                 "identifier": true,
                 "via": "email"
+              },
+              "passkey": {
+                "display_name": true
               }
             },
             "verification": {
@@ -31,17 +34,8 @@
           }
         },
         "name": {
-          "type": "object",
-          "properties": {
-            "first": {
-              "type": "string",
-              "title": "First name"
-            },
-            "last": {
-              "type": "string",
-              "title": "Last name"
-            }
-          }
+          "type": "string",
+          "title": "Name"
         }
       },
       "required": ["email"],

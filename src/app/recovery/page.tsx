@@ -119,7 +119,13 @@ function RecoveryPageContent() {
       if (handleContinueWith(data)) return
       window.location.href = '/settings'
     } catch (err: unknown) {
-      const status = (err as { response?: { status?: number } })?.response?.status
+      const r = (err as { response?: { status?: number; data?: { redirect_browser_to?: string } } })?.response
+      const status = r?.status
+      // Successful recovery answers 422 browser_location_change_required with
+      // the privileged settings-flow URL — follow it or the user is stuck
+      // re-submitting a code Kratos has already consumed.
+      const redirect = r?.data?.redirect_browser_to
+      if (status === 422 && redirect) { window.location.href = redirect; return }
       if (status === 400 || status === 422) fetchFlow(flow.id)
       else if (status === 410) window.location.href = initFlowUrl('recovery')
       else setNetworkError('Code rejected. Try again.')
