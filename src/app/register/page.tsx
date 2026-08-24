@@ -20,6 +20,8 @@ import {
   handleContinueWith,
 } from '@/lib/kratos-flow'
 import { extractFlowBanners } from '@/lib/flow-messages'
+import { Icons } from '@/components/ui/Icons'
+import { WebAuthnTriggerForm } from '@/components/ui/OryWebAuthn'
 
 function RegisterPageContent() {
   const [flow, setFlow] = useState<RegistrationFlow | null>(null)
@@ -130,7 +132,12 @@ function RegisterPageContent() {
       if (handleContinueWith(data, returnTo)) return
       fetchFlow(flow.id)
     } catch (err: unknown) {
-      const status = (err as { response?: { status?: number } })?.response?.status
+      const r = (err as { response?: { status?: number; data?: { redirect_browser_to?: string } } })?.response
+      const status = r?.status
+      // 422 browser_location_change_required = registration succeeded and
+      // Kratos wants the browser elsewhere (e.g. verification) — follow it.
+      const redirect = r?.data?.redirect_browser_to
+      if (status === 422 && redirect) { window.location.href = redirect; return }
       if (status === 400 || status === 422) fetchFlow(flow.id)
       else if (status === 410) window.location.href = initFlowUrl('registration', returnTo)
       else setNetworkError("Sign-up failed. Please try again.")
@@ -260,6 +267,27 @@ function RegisterPageContent() {
                 : hasPassword ? 'Create account' : 'Continue'}
             </button>
           </form>
+        )}
+
+        {/* Passkey sign-up. In the two-step flow Kratos only exposes the
+            trigger on the credentials step, where the chosen traits are
+            already echoed back as hidden `default`-group inputs — we re-render
+            those inside the trigger form (overridden by any local edits) so
+            the ceremony POST carries them. Ory's webauthn.js submits the
+            form itself once the browser credential is created. */}
+        {hasGroup(flow, 'passkey') && (
+          <>
+            <div className="divider-text" style={{ margin: '20px 0 16px' }}>or</div>
+            <WebAuthnTriggerForm
+              flow={flow}
+              group="passkey"
+              triggerName="passkey_register_trigger"
+              className="btn btn-secondary btn-block"
+              extra={Object.fromEntries(Object.entries(traits).filter(([k, v]) => k.startsWith('traits.') && v))}
+            >
+              <Icons.Fingerprint size={14} /> Sign up with a passkey
+            </WebAuthnTriggerForm>
+          </>
         )}
       </div>
       <div className="card-foot">
