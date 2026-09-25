@@ -3,6 +3,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
+import { useBrandingReturnTo } from '@/components/ui/Branding'
 import type { RegistrationFlow, UpdateRegistrationFlowBody } from '@ory/client'
 import { initFlowUrl } from '@/lib/ory'
 import { Loading } from '@/components/Loading'
@@ -32,6 +33,7 @@ function RegisterPageContent() {
   const [submitting, setSubmitting] = useState(false)
   const [networkError, setNetworkError] = useState<string | null>(null)
   const searchParams = useSearchParams()
+  useBrandingReturnTo(flow?.return_to)
   const flowId = searchParams.get('flow')
   const returnTo = searchParams.get('return_to') || ''
   const fetchingRef = useRef(false)

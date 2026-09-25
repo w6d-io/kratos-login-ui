@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { env } from 'next-runtime-env'
 import { BrandMark } from './BrandMark'
 import { Icons } from './Icons'
+import { BrandingProvider, SignInDomain, SiteBrand, brandingStyle, useBranding } from './Branding'
 
 interface AppShellProps {
   children: ReactNode
@@ -21,7 +22,16 @@ function applyTheme(theme: Theme) {
   document.documentElement.dataset.dark = dark ? '1' : '0'
 }
 
-export function AppShell({ children, flush }: AppShellProps) {
+export function AppShell(props: AppShellProps) {
+  return (
+    <BrandingProvider>
+      <Shell {...props} />
+    </BrandingProvider>
+  )
+}
+
+function Shell({ children, flush }: AppShellProps) {
+  const { branding } = useBranding()
   const appName = env('NEXT_PUBLIC_APP_NAME') || 'Acme ID'
   const [theme, setTheme] = useState<Theme>('system')
   const [open, setOpen] = useState<'theme' | null>(null)
@@ -46,7 +56,7 @@ export function AppShell({ children, flush }: AppShellProps) {
   const ThemeIcon = theme === 'dark' ? Icons.Moon : theme === 'light' ? Icons.Sun : Icons.Monitor
 
   return (
-    <div className="app">
+    <div className="app" style={brandingStyle(branding)}>
       <header className="app-header">
         <div className="app-brand">
           <BrandMark size={26} />
@@ -80,7 +90,11 @@ export function AppShell({ children, flush }: AppShellProps) {
         </div>
       </header>
 
-      <main className="app-main" style={flush ? { padding: 0 } : undefined}>{children}</main>
+      <main className="app-main" style={flush ? { padding: 0 } : undefined}>
+        <SiteBrand />
+        {children}
+        <SignInDomain appName={appName} />
+      </main>
 
       <footer className="app-footer">
         <span className="app-footer-status">

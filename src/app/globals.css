@@ -349,7 +349,7 @@ a:hover { text-decoration: underline; }
 
 .btn-primary {
   background: var(--primary);
-  color: var(--fg-inverse);
+  color: var(--primary-fg, var(--fg-inverse));
 }
 .btn-primary:hover:not(:disabled) { background: var(--primary-hover); }
 .btn-primary:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--primary-ring); }
@@ -1044,7 +1044,7 @@ a:hover { text-decoration: underline; }
   border: 1px solid transparent;
   border-radius: var(--radius);
   background: var(--primary);
-  color: var(--fg-inverse);
+  color: var(--primary-fg, var(--fg-inverse));
   font-size: 14px;
   font-weight: 500;
   font-family: var(--font-sans);
@@ -1120,3 +1120,43 @@ a:hover { text-decoration: underline; }
   font-size: 13px;
   margin-bottom: 16px;
 }
+
+/* ─── Per-site branding (site-ux §11) ────────────────────────────────── */
+.site-brand {
+  width: 100%;
+  max-width: var(--content-w);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.site-brand-logo {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  object-fit: contain;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+}
+.site-brand-text { flex: 1; min-width: 0; }
+.site-brand-name {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--fg);
+  overflow-wrap: anywhere;
+}
+.site-brand-welcome {
+  font-size: 13px;
+  color: var(--fg-tertiary);
+  overflow-wrap: anywhere;
+}
+.site-brand-help { font-size: 13px; white-space: nowrap; }
+.signin-domain {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 16px 0 0;
+  font-size: 12.5px;
+  color: var(--fg-tertiary);
+}
+.signin-domain strong { color: var(--fg-secondary); font-weight: 500; }
