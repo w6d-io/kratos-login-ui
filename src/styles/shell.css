@@ -1,0 +1,149 @@
+/* The frame around every screen: header, main column, footer, per-site brand, sign-in domain. */
+
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-header {
+  height: var(--header-h);
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: 0 var(--space-5);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+.app-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+}
+.brand-mark {
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-md);
+  /* The platform's mark: never takes a site's accent (branding must not replace platform identity). */
+  background: var(--color-text);
+  color: var(--color-surface);
+  flex-shrink: 0;
+}
+.brand-mark svg { display: block; }
+.app-header-spacer { flex: 1; }
+
+.app-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--space-7) var(--space-4) var(--space-6);
+}
+/* The card column: brand, card and domain line share one width and left edge. */
+.flow-column {
+  width: 100%;
+  max-width: var(--card-w);
+  display: flex;
+  flex-direction: column;
+}
+.flow-column.wide { max-width: 1040px; }
+
+.app-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-5);
+  padding: var(--space-4) var(--space-5);
+  border-top: 1px solid var(--color-border);
+  font-size: var(--text-sm);
+  color: var(--color-text-subtle);
+}
+.app-footer a { color: var(--color-text-subtle); }
+.app-footer a:hover { color: var(--color-text); }
+.app-footer-spacer { flex: 1; }
+
+@media (max-width: 480px) {
+  .app-header { padding: 0 var(--space-4); }
+  .app-main { padding: var(--space-5) var(--space-4) var(--space-5); }
+  .app-footer { padding: var(--space-3) var(--space-4); }
+}
+
+/* ── Menu (theme picker) ─────────────────────────────────────────────── */
+.dropdown-anchor { position: relative; }
+.menu {
+  position: absolute;
+  z-index: var(--z-popover);
+  top: calc(100% + var(--space-1));
+  right: 0;
+  min-width: 168px;
+  padding: var(--space-1);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  animation: enter var(--duration-base) var(--easing);
+}
+.menu-item {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: var(--text-base);
+  text-align: left;
+}
+.menu-item:hover, .menu-item:focus-visible { background: var(--color-hover); color: var(--color-text); }
+.menu-item[aria-checked="true"] { color: var(--color-text); font-weight: var(--weight-medium); }
+.menu-item .check { margin-left: auto; color: var(--color-accent); }
+
+/* ── Per-site branding (site-ux §11) ─────────────────────────────────── */
+.site-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  animation: enter var(--duration-slow) var(--easing);
+}
+.site-brand-logo {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  object-fit: contain;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+.site-brand-text { flex: 1; min-width: 0; }
+.site-brand-name {
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-lg);
+  line-height: var(--leading-lg);
+  color: var(--color-text);
+  overflow-wrap: anywhere;
+}
+.site-brand-welcome {
+  font-size: var(--text-base);
+  color: var(--color-text-muted);
+  overflow-wrap: anywhere;
+}
+.site-brand-help { font-size: var(--text-base); white-space: nowrap; }
+
+/* Always visible, branded or not: which service is actually asking for the password. */
+.signin-domain {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: var(--space-4) 0 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-subtle);
+  text-align: center;
+}
+.signin-domain strong { color: var(--color-text-muted); font-weight: var(--weight-medium); }

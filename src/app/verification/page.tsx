@@ -1,17 +1,12 @@
 'use client'
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { useBrandingReturnTo } from '@/components/ui/Branding'
 import type { VerificationFlow, UpdateVerificationFlowBody } from '@ory/client'
 import { initFlowUrl } from '@/lib/ory'
 import { Loading } from '@/components/Loading'
 import { createBrowserClient } from '@/lib/kratos'
-import { Banner } from '@/components/ui/Banner'
-import { Field } from '@/components/ui/Field'
-import { OtpInput } from '@/components/ui/OtpInput'
-import { Icons } from '@/components/ui/Icons'
 import {
   getCsrfToken,
   getInput,
@@ -19,6 +14,7 @@ import {
   handleContinueWith,
 } from '@/lib/kratos-flow'
 import { extractFlowBanners } from '@/lib/flow-messages'
+import { VerificationView } from '@/components/login/EmailCodeViews'
 
 type Stage = 'request' | 'verify' | 'success'
 
@@ -131,82 +127,22 @@ function VerificationPageContent() {
 
   if (loading || !flow) return <Loading />
 
-  if (stage === 'success') {
-    return (
-      <div className="card" style={{ width: '100%', maxWidth: 'var(--content-w)' }}>
-        <div className="card-head">
-          <h1>Email verified</h1>
-          <p>Thanks — your email is now verified.</p>
-        </div>
-        <div className="card-body">
-          <div style={{ display: 'flex', justifyContent: 'center', padding: '24px 0' }}>
-            <Icons.CheckCircle size={56} stroke={1.5} />
-          </div>
-          <Link href="/login" className="btn btn-primary btn-block">
-            Continue
-          </Link>
-        </div>
-      </div>
-    )
-  }
-
-  if (stage === 'verify') {
-    return (
-      <div className="card" style={{ width: '100%', maxWidth: 'var(--content-w)' }}>
-        <div className="card-head">
-          <h1>Verify your email</h1>
-          <p>We sent a 6-digit code to <strong>{email || 'your email'}</strong>.</p>
-        </div>
-        <div className="card-body">
-          {networkError && <Banner tone="danger" title="Network error">{networkError}</Banner>}
-          {banners.map((b, i) => <Banner key={i} tone={b.tone} title={b.title}>{b.body}</Banner>)}
-          <form onSubmit={submitCode} noValidate>
-            <Field label="Code" htmlFor="ver-code" error={getInput(flow, 'code')?.errors?.[0]}>
-              <OtpInput value={code} onChange={setCode} />
-            </Field>
-            <button type="submit" className="btn btn-primary btn-block mt-4" disabled={submitting || code.length !== 6}>
-              {submitting ? <><span className="spinner" /> Verifying…</> : 'Verify email'}
-            </button>
-            <button type="button" className="btn-link mt-3" onClick={() => setStage('request')}>
-              Send a new code
-            </button>
-          </form>
-        </div>
-        <div className="card-foot"><Link href="/login">Back to sign in</Link></div>
-      </div>
-    )
-  }
-
   return (
-    <div className="card" style={{ width: '100%', maxWidth: 'var(--content-w)' }}>
-      <div className="card-head">
-        <h1>Verify your email</h1>
-        <p>Enter your email and we&apos;ll send you a verification code.</p>
-      </div>
-      <div className="card-body">
-        {networkError && <Banner tone="danger" title="Network error">{networkError}</Banner>}
-        {banners.map((b, i) => <Banner key={i} tone={b.tone} title={b.title}>{b.body}</Banner>)}
-        <form onSubmit={submitRequest} noValidate>
-          <Field label="Email" required htmlFor="ver-email" error={getInput(flow, 'email')?.errors?.[0]}>
-            <input
-              id="ver-email"
-              type="email"
-              autoComplete="email"
-              className="input"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@company.com"
-              autoFocus
-              required
-            />
-          </Field>
-          <button type="submit" className="btn btn-primary btn-block mt-4" disabled={submitting || !email}>
-            {submitting ? <><span className="spinner" /> Sending…</> : 'Send verification code'}
-          </button>
-        </form>
-      </div>
-      <div className="card-foot"><Link href="/login">Back to sign in</Link></div>
-    </div>
+    <VerificationView
+      flow={flow}
+      stage={stage}
+      banners={banners}
+      networkError={networkError}
+      submitting={submitting}
+      email={email}
+      setEmail={setEmail}
+      code={code}
+      setCode={setCode}
+      onSubmitRequest={submitRequest}
+      onSubmitCode={submitCode}
+      onChangeEmail={() => { setCode(''); setStage('request') }}
+      onResend={() => submitRequest({ preventDefault: () => {} } as React.FormEvent)}
+    />
   )
 }
 

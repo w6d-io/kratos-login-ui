@@ -1,7 +1,6 @@
 'use client'
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { useBrandingReturnTo } from '@/components/ui/Branding'
 import type { LoginFlow, UpdateLoginFlowBody } from '@ory/client'
@@ -9,13 +8,6 @@ import { initFlowUrl } from '@/lib/ory'
 import { Loading } from '@/components/Loading'
 import { createBrowserClient } from '@/lib/kratos'
 import { config, isReturnUrlAllowed } from '@/lib/config'
-import { Banner } from '@/components/ui/Banner'
-import { Field } from '@/components/ui/Field'
-import { PasswordInput } from '@/components/ui/PasswordInput'
-import { Checkbox } from '@/components/ui/Checkbox'
-import { OtpInput } from '@/components/ui/OtpInput'
-import { Icons } from '@/components/ui/Icons'
-import { ProviderLogo, providerLabel } from '@/components/ui/ProviderLogo'
 import {
   getCsrfToken,
   getInput,
@@ -25,9 +17,9 @@ import {
   handleContinueWith,
 } from '@/lib/kratos-flow'
 import { extractFlowBanners, detectUrlBanner } from '@/lib/flow-messages'
-import { WebAuthnTriggerForm } from '@/components/ui/OryWebAuthn'
+import { CodeView, LookupView, PasswordView, TotpView, WebAuthnView, type LoginStep } from '@/components/login/LoginViews'
 
-type Step = 'password' | 'totp' | 'webauthn' | 'lookup_secret' | 'code'
+type Step = LoginStep
 
 function LoginPageContent() {
   const [flow, setFlow] = useState<LoginFlow | null>(null)
@@ -341,358 +333,62 @@ function LoginPageContent() {
   if (loading || !flow) return <Loading />
 
   const idField = getInput(flow, 'identifier') || getInput(flow, 'password_identifier')
-  const idErrors = idField?.errors ?? []
-  const pwErrors = getInput(flow, 'password')?.errors ?? []
+  const common = { flow, banners, networkError, submitting, setStep }
 
-  // ── Step: WebAuthn (passkey) ─────────────────────────────────────────
-  if (step === 'webauthn') {
-    return (
-      <div className="card" style={{ width: '100%', maxWidth: 'var(--content-w)' }}>
-        <div className="card-head">
-          <h1>Use your passkey</h1>
-          <p>Confirm with the device that has your passkey.</p>
-        </div>
-        <div className="card-body">
-          {networkError && <Banner tone="danger" title="Network error">{networkError}</Banner>}
-          {banners.map((b, i) => <Banner key={i} tone={b.tone} title={b.title}>{b.body}</Banner>)}
-          {/* Kratos's webauthn.js handles the whole ceremony: it reads the
-              challenge from the flow's hidden inputs, prompts the browser,
-              writes the assertion into the result input and POSTs the form
-              to flow.ui.action. Kratos 303s back here (with flow messages
-              on failure). Second-factor security keys use the `webauthn`
-              group; first-factor passkeys use `passkey`. */}
-          {(hasGroup(flow, 'webauthn') || hasGroup(flow, 'passkey')) && (
-            <WebAuthnTriggerForm
-              flow={flow}
-              group={hasGroup(flow, 'webauthn') ? 'webauthn' : 'passkey'}
-              triggerName={hasGroup(flow, 'webauthn') ? 'webauthn_login_trigger' : 'passkey_login_trigger'}
-              className="btn btn-primary btn-block"
-            >
-              <Icons.Fingerprint size={14} /> Use passkey
-            </WebAuthnTriggerForm>
-          )}
-          <div className="btn-row mt-4">
-            {methods.includes('totp') && (
-              <button type="button" className="btn btn-secondary btn-block" onClick={() => setStep('totp')}>
-                <Icons.Shield size={14} /> Authenticator app
-              </button>
-            )}
-            {methods.includes('lookup_secret') && (
-              <button type="button" className="btn btn-secondary btn-block" onClick={() => setStep('lookup_secret')}>
-                <Icons.Key size={14} /> Backup code
-              </button>
-            )}
-          </div>
-        </div>
-        <div className="card-foot"><Link href="/login">Back to sign-in</Link></div>
-      </div>
-    )
-  }
+  if (step === 'webauthn') return <WebAuthnView {...common} methods={methods} returnTo={returnTo} />
 
-  // ── Step: code-based passwordless login ─────────────────────────────
-  // Two sub-stages, derived from flow state: before the code is sent, only
-  // identifier+submit are in the flow; after Kratos sends the email, it adds
-  // a `code` input node. We render off that signal so a refresh on the verify
-  // page still shows the OTP form.
+  // Code-based passwordless login. Two sub-stages, derived from flow state:
+  // after Kratos sends the email it adds a `code` input node, so a refresh on
+  // the verify page still shows the code form.
   if (step === 'code') {
-    const codeField = getInput(flow, 'code')
-    const codeSent = !!codeField
-    const idErr = idField?.errors?.[0]
-    const codeErr = codeField?.errors?.[0]
     return (
-      <div className="card" style={{ width: '100%', maxWidth: 'var(--content-w)' }}>
-        <div className="card-head">
-          <h1>Email sign-in</h1>
-          <p>
-            {codeSent
-              ? <>We sent a 6-digit code to <strong>{identifier || 'your email'}</strong>.</>
-              : 'Enter your email and we’ll send you a sign-in code.'}
-          </p>
-        </div>
-        <div className="card-body">
-          {networkError && <Banner tone="danger" title="Network error">{networkError}</Banner>}
-          {banners.map((b, i) => <Banner key={i} tone={b.tone} title={b.title}>{b.body}</Banner>)}
-          {codeSent ? (
-            <form onSubmit={onSubmitCodeVerify} noValidate>
-              <Field label="Code" htmlFor="login-code" error={codeErr}>
-                <OtpInput value={code} onChange={setCode} />
-              </Field>
-              <button type="submit" className="btn btn-primary btn-block mt-4" disabled={submitting || code.length !== 6}>
-                {submitting ? <><span className="spinner" /> Verifying…</> : 'Sign in'}
-              </button>
-              <button
-                type="button"
-                className="btn-link mt-3"
-                onClick={() => { window.location.href = initFlowUrl('login', returnTo, { refresh, aal }) }}
-              >
-                Send a new code
-              </button>
-            </form>
-          ) : (
-            <form onSubmit={onSubmitCodeRequest} noValidate>
-              <Field label={idField?.label || 'Email'} required htmlFor="login-id" error={idErr}>
-                <input
-                  id="login-id"
-                  name={idField?.name || 'identifier'}
-                  type="email"
-                  className={`input ${idErr ? 'has-error' : ''}`}
-                  value={identifier}
-                  onChange={(e) => setIdentifier(e.target.value)}
-                  placeholder="you@company.com"
-                  autoComplete="username"
-                  autoFocus
-                  required
-                />
-              </Field>
-              <button type="submit" className="btn btn-primary btn-block mt-4" disabled={submitting || !identifier}>
-                {submitting ? <><span className="spinner" /> Sending…</> : 'Send sign-in code'}
-              </button>
-            </form>
-          )}
-          {!codeSent && methods.includes('password') && (
-            <button type="button" className="btn-link mt-3" onClick={() => setStep('password')}>
-              Use password instead
-            </button>
-          )}
-        </div>
-        <div className="card-foot"><Link href="/login">Back to sign-in</Link></div>
-      </div>
+      <CodeView
+        {...common}
+        identifier={identifier}
+        setIdentifier={setIdentifier}
+        code={code}
+        setCode={setCode}
+        methods={methods}
+        onSubmitCodeRequest={onSubmitCodeRequest}
+        onSubmitCodeVerify={onSubmitCodeVerify}
+        onResend={() => { window.location.href = initFlowUrl('login', returnTo, { refresh, aal }) }}
+        onChangeEmail={() => { window.location.href = initFlowUrl('login', returnTo, { refresh, aal }) }}
+      />
     )
   }
 
-  // ── Step: TOTP / Lookup secret (second-factor) ──────────────────────
   if (step === 'totp') {
-    return (
-      <div className="card" style={{ width: '100%', maxWidth: 'var(--content-w)' }}>
-        <div className="card-head">
-          <h1>Two-factor authentication</h1>
-          <p>Enter the 6-digit code from your authenticator app.</p>
-        </div>
-        <div className="card-body">
-          {networkError && <Banner tone="danger" title="Network error">{networkError}</Banner>}
-          {banners.map((b, i) => <Banner key={i} tone={b.tone} title={b.title}>{b.body}</Banner>)}
-          <form onSubmit={onSubmitTotp} noValidate>
-            <Field label="Verification code" required htmlFor="totp" error={getInput(flow, 'totp_code')?.errors?.[0]}>
-              <input
-                id="totp"
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                className="input"
-                value={totp}
-                onChange={(e) => setTotp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                placeholder="123456"
-                autoFocus
-                style={{ fontFamily: 'var(--font-mono)', fontSize: 18, letterSpacing: 4, textAlign: 'center' }}
-              />
-            </Field>
-            <button type="submit" className="btn btn-primary btn-block mt-4" disabled={submitting || totp.length < 6}>
-              {submitting ? <><span className="spinner" /> Verifying…</> : 'Verify'}
-            </button>
-          </form>
-          {methods.includes('lookup_secret') && (
-            <button type="button" className="btn-link mt-3" onClick={() => setStep('lookup_secret')}>
-              Use a backup code instead
-            </button>
-          )}
-        </div>
-        <div className="card-foot"><Link href="/login">Back to sign-in</Link></div>
-      </div>
-    )
+    return <TotpView {...common} totp={totp} setTotp={setTotp} methods={methods} returnTo={returnTo} onSubmitTotp={onSubmitTotp} />
   }
 
   if (step === 'lookup_secret') {
-    return (
-      <div className="card" style={{ width: '100%', maxWidth: 'var(--content-w)' }}>
-        <div className="card-head">
-          <h1>Use a backup code</h1>
-          <p>Enter one of the recovery codes you saved when MFA was enabled.</p>
-        </div>
-        <div className="card-body">
-          {networkError && <Banner tone="danger" title="Network error">{networkError}</Banner>}
-          <form onSubmit={onSubmitLookup} noValidate>
-            <Field label="Backup code" required htmlFor="lookup" error={getInput(flow, 'lookup_secret')?.errors?.[0]}>
-              <input
-                id="lookup"
-                className="input"
-                value={lookup}
-                onChange={(e) => setLookup(e.target.value)}
-                placeholder="abcd-1234"
-                autoFocus
-                autoComplete="one-time-code"
-                style={{ fontFamily: 'var(--font-mono)' }}
-              />
-            </Field>
-            <button type="submit" className="btn btn-primary btn-block mt-4" disabled={submitting || !lookup}>
-              {submitting ? <><span className="spinner" /> Verifying…</> : 'Verify'}
-            </button>
-          </form>
-        </div>
-        <div className="card-foot">
-          <button type="button" className="btn-link" onClick={() => setStep('totp')}>Try authenticator code instead</button>
-        </div>
-      </div>
-    )
+    return <LookupView {...common} lookup={lookup} setLookup={setLookup} methods={methods} returnTo={returnTo} onSubmitLookup={onSubmitLookup} />
   }
 
-  // ── Default: password + OIDC ──────────────────────────────────────────
+  // Default: password + OIDC + passkey.
   // Refresh mode = Kratos asked us to re-confirm an existing session before
   // a sensitive op (TOTP enroll, password change, ...). Identity is already
-  // known, so collapse the UI to a password-only confirm and hide the
-  // OIDC/register/keep-me-signed-in chrome that would imply a full sign-in.
-  // Gate on a known identifier — if the cookie was deleted server-side
-  // we'd render the compact form with an empty email chip, which looks
-  // broken. Falling back to the full sign-in UI is the safer default.
+  // known, so collapse the UI to a password-only confirm. Gate on a known
+  // identifier — if the cookie was deleted server-side we'd render the
+  // compact form with an empty account chip; the full sign-in UI is the
+  // safer default.
   const knownIdentifier = identifier || idField?.value || ''
   const refreshing = (refresh || flow?.refresh === true) && Boolean(knownIdentifier)
   return (
-    <div className="card" style={{ width: '100%', maxWidth: 'var(--content-w)' }}>
-      <div className="card-head">
-        <h1>{refreshing ? 'Confirm your password' : 'Sign in to your account'}</h1>
-        <p>
-          {refreshing
-            ? "We're verifying it's you before a sensitive change."
-            : 'Welcome back. Enter your credentials to continue.'}
-        </p>
-      </div>
-      <div className="card-body">
-        {networkError && <Banner tone="danger" title="Network error">{networkError}</Banner>}
-        {banners.map((b, i) => <Banner key={i} tone={b.tone} title={b.title}>{b.body}</Banner>)}
-
-        {!refreshing && oidc.length > 0 && (
-          <>
-            <div className={oidc.length === 1 ? '' : 'oidc-grid'}>
-              {oidc.map((p) => (
-                <button key={p.provider} type="button" className="oidc-btn" onClick={() => onSubmitOidc(p.provider)}>
-                  <ProviderLogo name={p.provider} size={18} />
-                  <span>Continue with {providerLabel(p.provider)}</span>
-                </button>
-              ))}
-            </div>
-            <div className="divider-text">or</div>
-          </>
-        )}
-
-        {hasGroup(flow, 'password') && (
-          <form onSubmit={onSubmitPassword} noValidate>
-            {refreshing ? (
-              <div
-                className="row"
-                style={{
-                  gap: 10,
-                  padding: '10px 12px',
-                  border: '1px solid var(--line)',
-                  borderRadius: 8,
-                  background: 'var(--surface-2)',
-                  marginBottom: 12,
-                }}
-              >
-                <Icons.User size={16} />
-                <span className="mono small" style={{ flex: 1 }}>{identifier || idField?.value}</span>
-              </div>
-            ) : (
-              <Field
-                label={idField?.label || 'Work email'}
-                required
-                htmlFor="login-id"
-                error={idErrors[0]}
-              >
-                <input
-                  id="login-id"
-                  name={idField?.name || 'identifier'}
-                  type="email"
-                  className={`input ${idErrors.length ? 'has-error' : ''}`}
-                  value={identifier}
-                  onChange={(e) => setIdentifier(e.target.value)}
-                  placeholder="you@company.com"
-                  autoComplete="username"
-                  autoFocus
-                  required
-                />
-              </Field>
-            )}
-
-            <Field
-              label="Password"
-              required
-              htmlFor="login-pw"
-              error={pwErrors[0]}
-              hintLink={
-                refreshing ? undefined : <Link href="/recovery" className="field-hint-link">Forgot?</Link>
-              }
-            >
-              <PasswordInput
-                id="login-pw"
-                name="password"
-                value={password}
-                onChange={setPassword}
-                error={pwErrors.length > 0}
-                placeholder="Enter your password"
-                autoComplete="current-password"
-                required
-              />
-            </Field>
-
-            {!refreshing && (
-              <div style={{ marginTop: 14 }}>
-                <Checkbox checked={remember} onChange={setRemember}>
-                  Keep me signed in for 30 days
-                </Checkbox>
-              </div>
-            )}
-
-            <button type="submit" className="btn btn-primary btn-block" style={{ marginTop: 18 }} disabled={submitting}>
-              {submitting
-                ? <><span className="spinner" /> {refreshing ? 'Confirming…' : 'Signing in…'}</>
-                : (refreshing ? 'Confirm' : 'Sign in')}
-            </button>
-          </form>
-        )}
-
-        {/* Passwordless fallback: on a fresh mixed flow (password + code both
-            offered) the code method is only a local step switch — Kratos drops
-            the password group once the code email is sent, so the re-fetched
-            flow lands back on the code step by itself. */}
-        {!refreshing && hasGroup(flow, 'password') && methods.includes('code') && (
-          <button type="button" className="btn-link mt-3" onClick={() => setStep('code')}>
-            Sign in with a one-time code instead
-          </button>
-        )}
-
-        {!refreshing && (hasGroup(flow, 'passkey') || hasGroup(flow, 'webauthn') || hasGroup(flow, 'totp')) && (
-          <>
-            <div className="divider-text" style={{ margin: '20px 0 16px' }}>or continue with</div>
-            <div className="oidc-grid">
-              {/* Passkey triggers the browser ceremony directly — no extra
-                  step. Ory's script posts the form once the credential
-                  resolves; discoverable credentials need no identifier. */}
-              {hasGroup(flow, 'passkey') && (
-                <WebAuthnTriggerForm flow={flow} group="passkey" triggerName="passkey_login_trigger" className="oidc-btn">
-                  <Icons.Fingerprint size={16} /> Passkey
-                </WebAuthnTriggerForm>
-              )}
-              {hasGroup(flow, 'webauthn') && (
-                <button type="button" className="oidc-btn" onClick={() => setStep('webauthn')}>
-                  <Icons.Fingerprint size={16} /> Security key
-                </button>
-              )}
-              {hasGroup(flow, 'totp') && (
-                <button type="button" className="oidc-btn" onClick={() => setStep('totp')}>
-                  <Icons.Shield size={16} /> Authenticator
-                </button>
-              )}
-            </div>
-          </>
-        )}
-      </div>
-      {!refreshing && (
-        <div className="card-foot">
-          Don&apos;t have an account?{' '}
-          <Link href={`/register${returnTo ? `?return_to=${encodeURIComponent(returnTo)}` : ''}`}>
-            Create account
-          </Link>
-        </div>
-      )}
-    </div>
+    <PasswordView
+      {...common}
+      identifier={identifier}
+      setIdentifier={setIdentifier}
+      password={password}
+      setPassword={setPassword}
+      refreshing={refreshing}
+      knownIdentifier={knownIdentifier}
+      oidc={oidc}
+      methods={methods}
+      returnTo={returnTo}
+      onSubmitPassword={onSubmitPassword}
+      onSubmitOidc={onSubmitOidc}
+    />
   )
 }
 

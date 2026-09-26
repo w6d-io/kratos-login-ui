@@ -72,6 +72,7 @@ export function WebAuthnTriggerForm({
   className,
   disabled,
   extra,
+  onTrigger,
   children,
 }: {
   flow: AnyFlow
@@ -84,6 +85,8 @@ export function WebAuthnTriggerForm({
   disabled?: boolean
   /** Extra hidden fields (e.g. registration traits) — override flow values. */
   extra?: Record<string, string>
+  /** Called when the person starts the ceremony (e.g. to remember the method). */
+  onTrigger?: () => void
   children?: React.ReactNode
 }) {
   const ready = useOryWebAuthn(flow)
@@ -97,6 +100,7 @@ export function WebAuthnTriggerForm({
   const hidden = [...getHiddenInputs(flow, 'default'), ...getHiddenInputs(flow, group)]
     .filter((f) => !(f.name in overrides))
   const run = () => {
+    onTrigger?.()
     const fn = (window as unknown as Record<string, unknown>)[trigger.onclickTrigger ?? '']
     if (typeof fn === 'function') (fn as () => void)()
   }
@@ -120,6 +124,7 @@ export function WebAuthnTriggerForm({
         value={trigger.value}
         className={className}
         disabled={disabled || !ready}
+        aria-busy={!ready || undefined}
         onClick={run}
       >
         {children ?? trigger.label ?? 'Continue'}

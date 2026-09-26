@@ -1,17 +1,12 @@
 'use client'
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { useBrandingReturnTo } from '@/components/ui/Branding'
 import type { RecoveryFlow, UpdateRecoveryFlowBody } from '@ory/client'
 import { initFlowUrl } from '@/lib/ory'
 import { Loading } from '@/components/Loading'
 import { createBrowserClient } from '@/lib/kratos'
-import { Banner } from '@/components/ui/Banner'
-import { Field } from '@/components/ui/Field'
-import { OtpInput } from '@/components/ui/OtpInput'
-import { Icons } from '@/components/ui/Icons'
 import {
   getCsrfToken,
   getInput,
@@ -19,6 +14,7 @@ import {
   handleContinueWith,
 } from '@/lib/kratos-flow'
 import { extractFlowBanners } from '@/lib/flow-messages'
+import { RecoveryView } from '@/components/login/EmailCodeViews'
 
 type Stage = 'request' | 'verify'
 
@@ -138,83 +134,22 @@ function RecoveryPageContent() {
 
   if (loading || !flow) return <Loading />
 
-  if (stage === 'verify') {
-    const usesCode = hasGroup(flow, 'code')
-    return (
-      <div className="card" style={{ width: '100%', maxWidth: 'var(--content-w)' }}>
-        <div className="card-head">
-          <h1>Check your inbox</h1>
-          <p>
-            {usesCode
-              ? <>We sent a 6-digit code to <strong>{email || 'your email'}</strong>. Enter it below to continue.</>
-              : <>We sent a recovery link to <strong>{email || 'your email'}</strong>. Click the link in the email to continue.</>}
-          </p>
-        </div>
-        <div className="card-body">
-          {networkError && <Banner tone="danger" title="Network error">{networkError}</Banner>}
-          {banners.map((b, i) => <Banner key={i} tone={b.tone} title={b.title}>{b.body}</Banner>)}
-          {usesCode ? (
-            <form onSubmit={submitCode} noValidate>
-              <Field label="6-digit code" htmlFor="rec-code" error={getInput(flow, 'code')?.errors?.[0]}>
-                <OtpInput value={code} onChange={setCode} />
-              </Field>
-              <button type="submit" className="btn btn-primary btn-block mt-4" disabled={submitting || code.length !== 6}>
-                {submitting ? <><span className="spinner" /> Verifying…</> : 'Recover account'}
-              </button>
-              <button type="button" className="btn btn-link mt-3" onClick={() => setStage('request')}>
-                Use a different email
-              </button>
-            </form>
-          ) : (
-            <>
-              <Banner tone="info" title="Email sent">
-                Open the email and click the link. The link is valid for a limited time. If you don&apos;t see it, check spam.
-              </Banner>
-              <button type="button" className="btn btn-secondary btn-block mt-4" onClick={() => setStage('request')}>
-                Send to a different email
-              </button>
-            </>
-          )}
-        </div>
-        <div className="card-foot">
-          <Link href="/login"><Icons.ArrowLeft size={12} /> Back to sign in</Link>
-        </div>
-      </div>
-    )
-  }
-
   return (
-    <div className="card" style={{ width: '100%', maxWidth: 'var(--content-w)' }}>
-      <div className="card-head">
-        <h1>Recover your account</h1>
-        <p>We will help you regain access in a couple of clicks.</p>
-      </div>
-      <div className="card-body">
-        {networkError && <Banner tone="danger" title="Network error">{networkError}</Banner>}
-        {banners.map((b, i) => <Banner key={i} tone={b.tone} title={b.title}>{b.body}</Banner>)}
-        <form onSubmit={submitRequest} noValidate>
-          <Field label="Work email" required htmlFor="rec-email" error={getInput(flow, 'email')?.errors?.[0]}>
-            <input
-              id="rec-email"
-              type="email"
-              autoComplete="email"
-              className="input"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@company.com"
-              autoFocus
-              required
-            />
-          </Field>
-          <button type="submit" className="btn btn-primary btn-block mt-4" disabled={submitting || !email}>
-            {submitting ? <><span className="spinner" /> Sending…</> : 'Send recovery code'}
-          </button>
-        </form>
-      </div>
-      <div className="card-foot">
-        <Link href="/login"><Icons.ArrowLeft size={12} /> Back to sign in</Link>
-      </div>
-    </div>
+    <RecoveryView
+      flow={flow}
+      stage={stage}
+      banners={banners}
+      networkError={networkError}
+      submitting={submitting}
+      email={email}
+      setEmail={setEmail}
+      code={code}
+      setCode={setCode}
+      onSubmitRequest={submitRequest}
+      onSubmitCode={submitCode}
+      onChangeEmail={() => { setCode(''); setStage('request') }}
+      onResend={() => submitRequest({ preventDefault: () => {} } as React.FormEvent)}
+    />
   )
 }
 

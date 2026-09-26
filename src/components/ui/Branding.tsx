@@ -1,7 +1,7 @@
 'use client'
 
 import { createContext, useContext, useEffect, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react'
-import { accentVars, brandingTarget, type SiteBranding } from '@/lib/branding'
+import { accentVars, brandingTarget, contrastRatio, type SiteBranding } from '@/lib/branding'
 import { Icons } from './Icons'
 
 /**
@@ -55,9 +55,21 @@ export function useBrandingReturnTo(url: string | null | undefined) {
   }, [url, setReturnTo])
 }
 
-/** Inline style re-theming primary colours when the site has a vetted accent. */
+/**
+ * Inline custom properties for a site's vetted accent; base.css maps them onto --color-primary*
+ * (buttons, both themes) and, in the light theme, the focus ring — and links too when the accent
+ * reads as text (4.5:1 on white). Absent accent → undefined, platform palette.
+ */
 export function brandingStyle(b: SiteBranding | null): CSSProperties | undefined {
-  return b?.accent ? (accentVars(b.accent) as CSSProperties) : undefined
+  if (!b?.accent) return undefined
+  const v = accentVars(b.accent)
+  const style: Record<string, string> = {
+    '--brand-accent': v['--primary'],
+    '--brand-accent-hover': v['--primary-hover'],
+    '--brand-on-accent': v['--primary-fg'],
+  }
+  if (contrastRatio(b.accent, '#FFFFFF') >= 4.5) style['--brand-link'] = b.accent
+  return style as CSSProperties
 }
 
 export function SiteBrand() {
@@ -83,7 +95,7 @@ export function SiteBrand() {
       </div>
       {branding.helpUrl && (
         <a className="site-brand-help" href={branding.helpUrl} target="_blank" rel="noopener noreferrer">
-          Need help?
+          Need help?<span className="sr-only"> (opens in a new tab)</span>
         </a>
       )}
     </div>

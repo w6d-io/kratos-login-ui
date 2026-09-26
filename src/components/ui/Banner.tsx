@@ -7,10 +7,12 @@ interface BannerProps {
   tone?: BannerTone
   title?: ReactNode
   children?: ReactNode
+  /** Links or buttons that resolve the banner ("Start again", "Sign in instead"). */
+  actions?: ReactNode
   onDismiss?: () => void
 }
 
-export function Banner({ tone = 'info', title, children, onDismiss }: BannerProps) {
+export function Banner({ tone = 'info', title, children, actions, onDismiss }: BannerProps) {
   const IconC =
     tone === 'danger' ? Icons.AlertCircle :
     tone === 'warn'   ? Icons.AlertTriangle :
@@ -22,7 +24,8 @@ export function Banner({ tone = 'info', title, children, onDismiss }: BannerProp
       <div className="banner-icon"><IconC size={16} /></div>
       <div className="banner-body">
         {title && <div className="banner-title">{title}</div>}
-        <div>{children}</div>
+        {children && (title ? <p>{children}</p> : <div>{children}</div>)}
+        {actions && <div className="banner-actions">{actions}</div>}
       </div>
       {onDismiss && (
         <button type="button" className="btn-icon" onClick={onDismiss} aria-label="Dismiss">

@@ -18,6 +18,8 @@ export function Icon({ d, size = 16, stroke = 2, fill, ...rest }: IconProps) {
       strokeWidth={stroke}
       strokeLinecap="round"
       strokeLinejoin="round"
+      aria-hidden={rest['aria-label'] ? undefined : true}
+      focusable="false"
       {...rest}
     >
       {typeof d === 'string' ? <path d={d} /> : d}
@@ -64,4 +66,9 @@ export const Icons: Record<string, IconRenderer> = {
   Fingerprint: (p) => <Icon {...p} d={<><path d="M12 11v2a8 8 0 0 1-2 6"/><path d="M5 13a7 7 0 0 1 14 0v1"/><path d="M9 11a3 3 0 0 1 6 0v3a8 8 0 0 0 1 4"/><path d="M9 19a8 8 0 0 0 1-3"/><path d="M3 14a9 9 0 0 1 5-8"/><path d="M21 14v-1a9 9 0 0 0-3-7"/></>} />,
   RefreshCcw: (p) => <Icon {...p} d={<><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/></>} />,
   Plug: (p) => <Icon {...p} d={<><path d="M12 22v-5"/><path d="M9 8V2 M15 8V2"/><rect x="6" y="8" width="12" height="9" rx="2"/></>} />,
+  Printer: (p) => <Icon {...p} d={<><path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M6 14h12v7H6z"/></>} />,
+  ExternalLink: (p) => <Icon {...p} d={<><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></>} />,
+  Inbox: (p) => <Icon {...p} d={<><path d="M3 13l3-8h12l3 8"/><path d="M3 13v6a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1v-6h-5l-1.5 2h-5L8 13H3z"/></>} />,
+  HelpCircle: (p) => <Icon {...p} d={<><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 0 1 4.9.7c0 1.7-2.4 2.3-2.4 3.8"/><circle cx="12" cy="17" r=".5" fill="currentColor" stroke="none"/></>} />,
+  ArrowUp: (p) => <Icon {...p} d="M12 19V5 M5 12l7-7 7 7" />,
 }

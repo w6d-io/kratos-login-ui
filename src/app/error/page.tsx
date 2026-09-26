@@ -6,7 +6,9 @@ import { FlowError } from '@ory/client'
 import { createBrowserClient } from '@/lib/kratos'
 import { config, isReturnUrlAllowed } from '@/lib/config'
 import { Loading } from '@/components/Loading'
-import { Banner } from '@/components/ui/Banner'
+import { FlowCard } from '@/components/flow/FlowCard'
+import { CopyButton } from '@/components/flow/Parts'
+import { describeFlowError } from '@/components/flow/flow-error'
 import { Icons } from '@/components/ui/Icons'
 
 function ErrorPageContent() {
@@ -36,36 +38,47 @@ function ErrorPageContent() {
 
   if (loading) return <Loading />
 
-  const errorData = error?.error as { message?: string; reason?: string; code?: number; status?: string } | undefined
-  const errorMessage = errorData?.message || 'An unexpected error occurred'
-  const errorReason = errorData?.reason
-  const errorCode = errorData?.code
+  const errorData = error?.error as { id?: string; message?: string; reason?: string; code?: number; status?: string } | undefined
+  const friendly = describeFlowError(errorData)
+  const signIn = `/login?return_to=${encodeURIComponent(returnTo)}`
+  const primary =
+    friendly.action === 'back' ? { href: returnTo, label: 'Continue' }
+    : friendly.action === 'signin' ? { href: signIn, label: 'Sign in' }
+    : friendly.action === 'wait' ? { href: signIn, label: 'Try again' }
+    : { href: signIn, label: 'Start again' }
+  const reference = [errorData?.id, errorData?.code && `code ${errorData.code}`, errorId && `ref ${errorId}`].filter(Boolean).join(' · ')
 
   return (
-    <div className="card" style={{ width: '100%', maxWidth: 'var(--content-w)' }}>
-      <div className="card-head">
-        <h1>Something went wrong</h1>
-        <p>We hit a snag while processing your request.</p>
+    <FlowCard
+      icon={friendly.tone === 'info' ? <Icons.Info size={20} /> : <Icons.AlertTriangle size={20} />}
+      tone={friendly.tone === 'info' ? 'neutral' : friendly.tone}
+      title={friendly.title}
+      subtitle={friendly.body}
+    >
+      <div className="form-actions" style={{ marginTop: 0 }}>
+        <a href={primary.href} className="btn btn-primary btn-block">
+          {friendly.action === 'restart' || friendly.action === 'wait' ? <Icons.RefreshCcw size={16} /> : null} {primary.label}
+        </a>
+        {friendly.action !== 'back' && (
+          <a href={returnTo} className="btn btn-ghost btn-block">Go back</a>
+        )}
       </div>
-      <div className="card-body">
-        <Banner tone="danger" title={errorMessage}>
-          {errorReason && <div>{errorReason}</div>}
-          {(errorCode || errorId) && (
-            <div className="mono mt-2">
-              {errorCode && <>code <strong>{errorCode}</strong> · </>}id <strong>{errorId || 'unknown'}</strong>
-            </div>
-          )}
-        </Banner>
-        <div className="btn-row mt-4">
-          <a href={`/login?return_to=${encodeURIComponent(returnTo)}`} className="btn btn-primary btn-block">
-            <Icons.RefreshCcw size={16} /> Try again
-          </a>
-          <a href={returnTo} className="btn btn-secondary btn-block">
-            Go back
-          </a>
-        </div>
-      </div>
-    </div>
+      {(errorData?.message || errorData?.reason || reference) && (
+        <details className="disclosure">
+          <summary><Icons.ChevronRight size={14} /> Technical details for support</summary>
+          <div className="disclosure-body">
+            {errorData?.message && <p style={{ margin: 0 }}>{errorData.message}</p>}
+            {errorData?.reason && <p style={{ margin: 'var(--space-2) 0 0' }}>{errorData.reason}</p>}
+            {reference && (
+              <div className="secret">
+                <code>{reference}</code>
+                <CopyButton text={reference} label="Copy" />
+              </div>
+            )}
+          </div>
+        </details>
+      )}
+    </FlowCard>
   )
 }
 

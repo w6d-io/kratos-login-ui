@@ -18,18 +18,18 @@ export async function generateMetadata(): Promise<Metadata> {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   const faviconUrl = env('NEXT_PUBLIC_FAVICON_URL') || '/favicon.ico'
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" className={`${inter.variable} ${jetbrains.variable}`} suppressHydrationWarning>
       <head>
         <PublicEnvScript />
         <link rel="icon" href={faviconUrl} />
         {/* Set theme as early as possible to avoid flash. */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem('theme')||'system';var d=t==='dark'||(t==='system'&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.dataset.dark=d?'1':'0'}catch(e){}})();`,
+            __html: `(function(){var m=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches,d=m;try{var t=localStorage.getItem('theme');if(t==='dark')d=true;else if(t==='light')d=false}catch(e){}document.documentElement.dataset.dark=d?'1':'0'})();`,
           }}
         />
       </head>
-      <body className={`${inter.className} ${jetbrains.variable}`}>
+      <body>
         <AppShell>{children}</AppShell>
       </body>
     </html>

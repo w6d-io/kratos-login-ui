@@ -1,18 +1,12 @@
 'use client'
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { useBrandingReturnTo } from '@/components/ui/Branding'
 import type { RegistrationFlow, UpdateRegistrationFlowBody } from '@ory/client'
 import { initFlowUrl } from '@/lib/ory'
 import { Loading } from '@/components/Loading'
 import { createBrowserClient } from '@/lib/kratos'
-import { Banner } from '@/components/ui/Banner'
-import { Field } from '@/components/ui/Field'
-import { PasswordInput } from '@/components/ui/PasswordInput'
-import { Checkbox } from '@/components/ui/Checkbox'
-import { ProviderLogo, providerLabel } from '@/components/ui/ProviderLogo'
 import {
   getCsrfToken,
   getInputs,
@@ -21,8 +15,7 @@ import {
   handleContinueWith,
 } from '@/lib/kratos-flow'
 import { extractFlowBanners } from '@/lib/flow-messages'
-import { Icons } from '@/components/ui/Icons'
-import { WebAuthnTriggerForm } from '@/components/ui/OryWebAuthn'
+import { RegisterView } from '@/components/login/RegisterView'
 
 function RegisterPageContent() {
   const [flow, setFlow] = useState<RegistrationFlow | null>(null)
@@ -171,141 +164,28 @@ function RegisterPageContent() {
 
   if (loading || !flow) return <Loading />
 
-  // Password strength heuristic for the design's hint.
-  const pwHint = (() => {
-    if (password.length < 8) return null
-    const variety = (/[A-Z]/.test(password) ? 1 : 0) + (/[0-9]/.test(password) ? 1 : 0) + (/[^A-Za-z0-9]/.test(password) ? 1 : 0)
-    if (password.length < 12) return { tone: 'warn' as const, text: 'Okay — consider adding more variety.' }
-    if (variety < 2) return { tone: 'warn' as const, text: 'Okay — try a longer mix of letters, numbers, and symbols.' }
-    return { tone: 'success' as const, text: 'Strong password.' }
-  })()
-
   return (
-    <div className="card" style={{ width: '100%', maxWidth: 'var(--content-w)' }}>
-      <div className="card-head">
-        <h1>Create your account</h1>
-        <p>It only takes a minute.</p>
-      </div>
-      <div className="card-body">
-        {networkError && <Banner tone="danger" title="Network error">{networkError}</Banner>}
-        {banners.map((b, i) => <Banner key={i} tone={b.tone} title={b.title}>{b.body}</Banner>)}
-
-        {oidc.length > 0 && (
-          <>
-            <div className={oidc.length === 1 ? '' : 'oidc-grid'}>
-              {oidc.map((p) => (
-                <button key={p.provider} type="button" className="oidc-btn" onClick={() => onSubmitOidc(p.provider)}>
-                  <ProviderLogo name={p.provider} size={18} />
-                  <span>Continue with {providerLabel(p.provider)}</span>
-                </button>
-              ))}
-            </div>
-            <div className="divider-text">or sign up with email</div>
-          </>
-        )}
-
-        {(hasPassword || hasProfileStep || traitFields.length > 0) && (
-          <form onSubmit={onSubmit} noValidate>
-            {traitFields.map((f) => {
-              const fieldId = `reg-${f.name.replace(/\W/g, '-')}`
-              return (
-                <Field
-                  key={f.name}
-                  label={f.label || humanize(f.name)}
-                  required={f.required}
-                  htmlFor={fieldId}
-                  error={f.errors[0]}
-                >
-                  <input
-                    id={fieldId}
-                    name={f.name}
-                    type={f.type === 'email' ? 'email' : f.type === 'tel' ? 'tel' : 'text'}
-                    className={`input ${f.errors.length ? 'has-error' : ''}`}
-                    value={traits[f.name] || ''}
-                    onChange={(e) => setTrait(f.name, e.target.value)}
-                    autoComplete={f.autocomplete}
-                    required={f.required}
-                  />
-                </Field>
-              )
-            })}
-
-            {hasPassword && (
-              <Field
-                label="Password"
-                required
-                htmlFor="reg-pw"
-                error={getInputs(flow, 'password').find((f) => f.name === 'password')?.errors[0]}
-                hint={pwHint?.text}
-              >
-                <PasswordInput
-                  id="reg-pw"
-                  name="password"
-                  value={password}
-                  onChange={setPassword}
-                  placeholder="At least 12 characters"
-                  autoComplete="new-password"
-                  required
-                />
-              </Field>
-            )}
-
-            {hasPassword && (
-              <div style={{ marginTop: 14 }}>
-                <Checkbox checked={accepted} onChange={setAccepted}>
-                  I agree to the <a href="#terms">Terms</a> and <a href="#privacy">Privacy Policy</a>.
-                </Checkbox>
-              </div>
-            )}
-
-            <button
-              type="submit"
-              className="btn btn-primary btn-block"
-              style={{ marginTop: 18 }}
-              disabled={submitting || (hasPassword && !accepted)}
-            >
-              {submitting
-                ? <><span className="spinner" /> {hasPassword ? 'Creating account…' : 'Continuing…'}</>
-                : hasPassword ? 'Create account' : 'Continue'}
-            </button>
-          </form>
-        )}
-
-        {/* Passkey sign-up. In the two-step flow Kratos only exposes the
-            trigger on the credentials step, where the chosen traits are
-            already echoed back as hidden `default`-group inputs — we re-render
-            those inside the trigger form (overridden by any local edits) so
-            the ceremony POST carries them. Ory's webauthn.js submits the
-            form itself once the browser credential is created. */}
-        {hasGroup(flow, 'passkey') && (
-          <>
-            <div className="divider-text" style={{ margin: '20px 0 16px' }}>or</div>
-            <WebAuthnTriggerForm
-              flow={flow}
-              group="passkey"
-              triggerName="passkey_register_trigger"
-              className="btn btn-secondary btn-block"
-              extra={Object.fromEntries(Object.entries(traits).filter(([k, v]) => k.startsWith('traits.') && v))}
-            >
-              <Icons.Fingerprint size={14} /> Sign up with a passkey
-            </WebAuthnTriggerForm>
-          </>
-        )}
-      </div>
-      <div className="card-foot">
-        Already have an account?{' '}
-        <Link href={`/login${returnTo ? `?return_to=${encodeURIComponent(returnTo)}` : ''}`}>
-          Sign in
-        </Link>
-      </div>
-    </div>
+    <RegisterView
+      flow={flow}
+      banners={banners}
+      networkError={networkError}
+      submitting={submitting}
+      oidc={oidc}
+      traitFields={traitFields}
+      traits={traits}
+      setTrait={setTrait}
+      password={password}
+      setPassword={setPassword}
+      accepted={accepted}
+      setAccepted={setAccepted}
+      hasPassword={hasPassword}
+      hasProfileStep={hasProfileStep}
+      hasPasskey={hasGroup(flow, 'passkey')}
+      returnTo={returnTo}
+      onSubmit={onSubmit}
+      onSubmitOidc={onSubmitOidc}
+    />
   )
-}
-
-function humanize(name: string): string {
-  // 'traits.email' → 'Email', 'traits.first_name' → 'First name'
-  const last = name.split('.').pop() || name
-  return last.replace(/[_-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
 export default function RegisterPage() {

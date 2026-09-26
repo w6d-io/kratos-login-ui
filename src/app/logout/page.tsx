@@ -6,7 +6,7 @@ import { useSearchParams } from 'next/navigation'
 import { createBrowserClient } from '@/lib/kratos'
 import { config, isReturnUrlAllowed } from '@/lib/config'
 import { Loading } from '@/components/Loading'
-import { Banner } from '@/components/ui/Banner'
+import { FlowCard } from '@/components/flow/FlowCard'
 import { Icons } from '@/components/ui/Icons'
 
 function LogoutPageContent() {
@@ -39,40 +39,35 @@ function LogoutPageContent() {
       })
   }, [returnTo, auto])
 
-  if (loading || autoSubmitted) return <Loading />
+  if (loading || autoSubmitted) return <Loading label="Signing you out" />
 
   if (error) {
     return (
-      <div className="card" style={{ width: '100%', maxWidth: 'var(--content-w)' }}>
-        <div className="card-head">
-          <h1>Sign out</h1>
-          <p>{error}</p>
-        </div>
-        <div className="card-body">
-          <Link href={`/login?return_to=${encodeURIComponent(returnTo)}`} className="btn btn-primary btn-block">
-            Go to sign in
-          </Link>
-        </div>
-      </div>
+      <FlowCard
+        icon={<Icons.LogOut size={20} />}
+        title="You’re not signed in"
+        subtitle="There’s no active session in this browser, so there’s nothing to sign out of."
+      >
+        <Link href={`/login?return_to=${encodeURIComponent(returnTo)}`} className="btn btn-primary btn-block">
+          Sign in
+        </Link>
+      </FlowCard>
     )
   }
 
   return (
-    <div className="card" style={{ width: '100%', maxWidth: 'var(--content-w)' }}>
-      <div className="card-head">
-        <h1>Sign out</h1>
-        <p>Are you sure you want to sign out?</p>
+    <FlowCard
+      icon={<Icons.LogOut size={20} />}
+      title="Sign out?"
+      subtitle="You’ll be signed out in this browser. Apps you opened with this account will ask you to sign in again."
+    >
+      <div className="form-actions" style={{ marginTop: 0 }}>
+        <a href={logoutUrl || '#'} className="btn btn-primary btn-block">
+          <Icons.LogOut size={16} /> Sign out
+        </a>
+        <a href={returnTo} className="btn btn-ghost btn-block">Stay signed in</a>
       </div>
-      <div className="card-body">
-        <Banner tone="info">You will be redirected after signing out.</Banner>
-        <div className="btn-row mt-4">
-          <a href={logoutUrl || '#'} className="btn btn-danger btn-block">
-            <Icons.LogOut size={14} /> Sign out
-          </a>
-          <a href={returnTo} className="btn btn-secondary btn-block">Cancel</a>
-        </div>
-      </div>
-    </div>
+    </FlowCard>
   )
 }
 
