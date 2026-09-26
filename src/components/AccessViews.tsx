@@ -113,12 +113,22 @@ export function EnrolView({ siteName, email, methods, settingsUrl, helpUrl }: En
   )
 }
 
-export function AccessErrorView({ onRetry }: { onRetry: () => void }) {
+/** `unavailable`: jinbe couldn't say why access was refused — neutral, no guessing. */
+export function AccessErrorView({ onRetry, unavailable }: { onRetry: () => void; unavailable?: boolean }) {
   return (
     <div className="card" style={{ width: '100%', maxWidth: 'var(--content-w)' }}>
       <div className="card-head">
-        <h1>We couldn&apos;t check your access</h1>
-        <p>The sign-in service didn&apos;t answer. Check your connection and try again.</p>
+        {unavailable ? (
+          <>
+            <h1>We can&apos;t check your access right now</h1>
+            <p>Something on our side didn&apos;t answer in time. Please try again in a moment.</p>
+          </>
+        ) : (
+          <>
+            <h1>We couldn&apos;t check your access</h1>
+            <p>The sign-in service didn&apos;t answer. Check your connection and try again.</p>
+          </>
+        )}
       </div>
       <div className="card-body">
         <button type="button" className="btn btn-primary btn-block" onClick={onRetry}>

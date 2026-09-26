@@ -1,14 +1,21 @@
 /**
- * Decision tree for /access (site-ux §11.2). The gateway sends refused
- * browsers here with `?site=<name>&return_to=<url>&reason=needs_2fa|forbidden`.
- * Query params are display hints only: the real state comes from Kratos
- * (whoami + an aal2 login-flow probe), and the gateway re-checks on return.
+ * Decision tree for /access (site-ux §11.2). The gateway sends every refused
+ * browser on a 2FA site here with `?site=<name>&return_to=<url>` — Oathkeeper
+ * can't say why, so the reason comes from jinbe (server-side, with the
+ * visitor's session); any `reason` query param is ignored. Kratos then
+ * decides step-up vs enrolment, and the gateway re-checks on return.
  */
 
 export type AccessReason = 'needs_2fa' | 'forbidden'
+export type JinbeReason = AccessReason | 'ok' | 'not_found'
+
+/** jinbe's answer to "why was this visitor refused?" (see access-reason-server). */
+export type AccessReasonResult =
+  | { kind: 'reason'; reason: JinbeReason; minAal: 'aal1' | 'aal2' | null }
+  | { kind: 'unauthenticated' }
+  | { kind: 'unavailable' }
 
 export interface AccessParams {
-  reason: AccessReason
   returnTo: string | null
   site: string | null
 }
@@ -29,7 +36,6 @@ export const ENROL_GROUPS = ['totp', 'webauthn', 'lookup_secret'] as const
 const SITE_NAME = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/
 
 export function parseAccessParams(sp: URLSearchParams, isAllowed: (url: string) => boolean): AccessParams {
-  const reason: AccessReason = sp.get('reason') === 'needs_2fa' ? 'needs_2fa' : 'forbidden'
   const rawReturn = sp.get('return_to') || ''
   let returnTo: string | null = null
   try {
@@ -39,7 +45,7 @@ export function parseAccessParams(sp: URLSearchParams, isAllowed: (url: string) 
     returnTo = null
   }
   const site = sp.get('site') || ''
-  return { reason, returnTo, site: SITE_NAME.test(site) ? site : null }
+  return { returnTo, site: SITE_NAME.test(site) ? site : null }
 }
 
 export function classifySessionError(err: unknown): SessionProbe {
@@ -80,10 +86,16 @@ export type AccessOutcome =
   /** methods null = settings probe failed; the settings page still lists what's on offer. */
   | { kind: 'enrol'; settingsUrl: string; methods: Array<(typeof ENROL_GROUPS)[number]> | null; email: string | null }
   | { kind: 'error' }
+  /** jinbe couldn't say why (down, timeout, 5xx): neutral retry, never a blind step-up. */
+  | { kind: 'unavailable' }
 
 type FlowWithId = { id: string } & NonNullable<FlowLike>
 
 export interface AccessDeps {
+  /** Why the gateway refused — asked of jinbe server-side (/api/access-reason). */
+  accessReason: () => Promise<AccessReasonResult>
+  /** False when we already sent this visitor back to return_to moments ago (loop guard). */
+  mayReturn: () => boolean
   /** Kratos whoami; throws the client error on 401/403. */
   toSession: () => Promise<{ aal: string; email: string | null }>
   /** Browser login flow with aal=aal2 (JSON), carrying return_to. */
@@ -97,14 +109,38 @@ export interface AccessDeps {
 }
 
 export async function resolveAccess(params: AccessParams, deps: AccessDeps): Promise<AccessOutcome> {
-  let probe: SessionProbe
-  try {
-    probe = { kind: 'session', ...(await deps.toSession()) }
-  } catch (e) {
-    probe = classifySessionError(e)
+  const whoami = async (): Promise<SessionProbe> => {
+    try {
+      return { kind: 'session', ...(await deps.toSession()) }
+    } catch (e) {
+      return classifySessionError(e)
+    }
   }
+  // Without both there is nothing to ask jinbe about (its 400 → forbidden).
+  let answer: AccessReasonResult = { kind: 'reason', reason: 'forbidden', minAal: null }
+  if (params.site && params.returnTo) {
+    try {
+      answer = await deps.accessReason()
+    } catch {
+      answer = { kind: 'unavailable' }
+    }
+  }
+  if (answer.kind === 'unauthenticated') return { kind: 'redirect', to: signInUrl(params.returnTo) }
+  if (answer.kind === 'unavailable') return { kind: 'unavailable' }
+  if (answer.reason === 'ok') {
+    return params.returnTo && deps.mayReturn() ? { kind: 'redirect', to: params.returnTo } : { kind: 'unavailable' }
+  }
+  if (answer.reason !== 'needs_2fa') {
+    // jinbe evaluated the session already; whoami only supplies "signed in as".
+    const probe = await whoami()
+    return probe.kind === 'session'
+      ? { kind: 'forbidden', email: probe.email, alreadyAal2: probe.aal === 'aal2' }
+      : { kind: 'forbidden', email: null, alreadyAal2: false }
+  }
+
+  const probe = await whoami()
   const email = probe.kind === 'session' ? probe.email : null
-  switch (decideAccess(params.reason, probe)) {
+  switch (decideAccess('needs_2fa', probe)) {
     case 'signin':
       return { kind: 'redirect', to: signInUrl(params.returnTo) }
     case 'stepup':
@@ -132,4 +168,24 @@ export async function resolveAccess(params: AccessParams, deps: AccessDeps): Pro
   } catch {
     return { kind: 'enrol', settingsUrl: `/settings?return_to=${encodeURIComponent(back)}#mfa`, methods: null, email }
   }
+}
+
+type KeyValueStore = Pick<Storage, 'getItem' | 'setItem'>
+const RETURN_WINDOW_MS = 30_000
+
+/**
+ * Loop guard for jinbe's `ok`: if we sent this visitor back to the same
+ * return_to within the last 30 s and the gateway refused again, jinbe and
+ * the gateway disagree — stop bouncing and show the retry page instead.
+ */
+export function returnGuard(returnTo: string, storage: KeyValueStore, now: () => number = Date.now): boolean {
+  const key = `access-return:${returnTo}`
+  try {
+    const last = Number(storage.getItem(key) || 0)
+    if (last && now() - last < RETURN_WINDOW_MS) return false
+    storage.setItem(key, String(now()))
+  } catch {
+    // No storage (private mode): allow; the retry page is one refusal away.
+  }
+  return true
 }

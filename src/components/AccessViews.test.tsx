@@ -49,3 +49,11 @@ describe('AccessErrorView', () => {
     expect(screen.getByRole('button', { name: /try again/i })).toBeTruthy()
   })
 })
+
+describe('AccessErrorView (unavailable)', () => {
+  it('uses neutral copy when access cannot be checked right now', () => {
+    render(<AccessErrorView unavailable onRetry={() => {}} />)
+    expect(screen.getByRole('heading').textContent).toMatch(/can.t check your access right now/i)
+    expect(screen.getByRole('button', { name: /try again/i })).toBeTruthy()
+  })
+})

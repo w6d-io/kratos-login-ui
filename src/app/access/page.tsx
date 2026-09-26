@@ -5,17 +5,19 @@ import { useSearchParams } from 'next/navigation'
 import { createBrowserClient } from '@/lib/kratos'
 import { initFlowUrl } from '@/lib/ory'
 import { isReturnUrlAllowed } from '@/lib/config'
-import { parseAccessParams, resolveAccess, type AccessOutcome } from '@/lib/access'
+import { parseAccessParams, resolveAccess, returnGuard, type AccessOutcome, type AccessReasonResult } from '@/lib/access'
 import { Loading } from '@/components/Loading'
 import { AccessErrorView, EnrolView, ForbiddenView } from '@/components/AccessViews'
 import { useBranding, useBrandingReturnTo } from '@/components/ui/Branding'
 
 /**
- * Where the gateway sends browsers it refused (task PX-1):
- *   /access?site=<name>&return_to=<url>&reason=needs_2fa|forbidden
- * needs_2fa → step up (aal2 login flow) or enrol a second factor first;
- * forbidden (or still refused at aal2) → branded "no access" page.
- * The gateway re-checks on return, so nothing here grants access.
+ * Where the gateway sends browsers it refused on a 2FA site:
+ *   /access?site=<name>&return_to=<url>
+ * The reason comes from jinbe via /api/access-reason (a `reason` query param
+ * is ignored): needs_2fa → step up or enrol; forbidden/not_found (or still
+ * refused at aal2) → branded "no access"; ok → back to return_to; jinbe
+ * down → neutral retry. The gateway re-checks on return, so nothing here
+ * grants access.
  */
 function AccessPageContent() {
   const searchParams = useSearchParams()
@@ -27,6 +29,19 @@ function AccessPageContent() {
   const run = useCallback(() => {
     const kratos = createBrowserClient()
     void resolveAccess(params, {
+      accessReason: async () => {
+        const qs = new URLSearchParams({ site: params.site ?? '', return_to: params.returnTo ?? '' })
+        const res = await fetch(`/api/access-reason?${qs}`, { cache: 'no-store', credentials: 'same-origin' })
+        if (!res.ok) return { kind: 'unavailable' }
+        return (await res.json()) as AccessReasonResult
+      },
+      mayReturn: () => {
+        try {
+          return returnGuard(params.returnTo ?? '', window.sessionStorage)
+        } catch {
+          return true // sessionStorage getter itself can throw when storage is blocked
+        }
+      },
       toSession: async () => {
         const { data } = await kratos.toSession()
         const email = (data.identity?.traits as { email?: unknown } | undefined)?.email
@@ -63,6 +78,8 @@ function AccessPageContent() {
       )
     case 'enrol':
       return <EnrolView siteName={siteName} email={outcome.email} methods={outcome.methods} settingsUrl={outcome.settingsUrl} helpUrl={helpUrl} />
+    case 'unavailable':
+      return <AccessErrorView unavailable onRetry={retry} />
     default:
       return <AccessErrorView onRetry={retry} />
   }
