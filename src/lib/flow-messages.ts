@@ -5,6 +5,8 @@ export interface FlowBanner {
   tone: BannerTone
   title: string
   body: string
+  /** Kratos message id (ui.messages[].id), when the banner comes from one. */
+  id?: number
 }
 
 type AnyFlow = LoginFlow | RegistrationFlow | RecoveryFlow | VerificationFlow | SettingsFlow
@@ -35,8 +37,16 @@ export function extractFlowBanners(flow: AnyFlow | null): FlowBanner[] {
       m.type === 'info' ? 'info' :
       m.type === 'success' ? 'success' : 'warn'
 
+    // Never tell a visitor whether an address has an account: Kratos' own
+    // text for these ids does, so it is replaced, tone included.
+    const neutral = ENUMERATION_SAFE[m.id]
+    if (neutral) {
+      banners.push({ ...neutral, id: m.id })
+      continue
+    }
     const known = mapKnownMessage(m.id)
     banners.push({
+      id: m.id,
       tone,
       title: known?.title || (tone === 'danger' ? 'Something went wrong' : 'Notice'),
       body: m.text || known?.body || '',
@@ -55,6 +65,15 @@ export function extractFlowBanners(flow: AnyFlow | null): FlowBanner[] {
   }
 
   return banners
+}
+
+const ENUMERATION_SAFE: Record<number, FlowBanner> = {
+  // "This account does not exist or has not setup sign in with code."
+  4000035: {
+    tone: 'info',
+    title: 'Check your inbox',
+    body: 'If this address can sign in with a code, we sent one. Otherwise, sign in with your password.',
+  },
 }
 
 function mapKnownMessage(id: number): { title: string; body: string } | null {

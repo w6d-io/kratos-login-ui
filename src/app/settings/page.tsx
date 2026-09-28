@@ -15,12 +15,38 @@ import {
   hasGroup,
   handleContinueWith,
 } from '@/lib/kratos-flow'
+import { flowContext, resolveKratosError, type FlowContext } from '@/lib/flow-nav'
+import { applyNav, errorNavOptions } from '@/lib/flow-nav-browser'
 import { extractFlowBanners } from '@/lib/flow-messages'
 import { FlowMessages } from '@/components/flow/FlowMessages'
 import { DangerSection, IdentityHeader, PasswordSection, ProfileSection, Section, SessionsSection, SettingsNav, type SettingsTab } from '@/components/settings/SettingsSections'
 import { BackupCodesRow, PasskeysRow, TotpRow } from '@/components/settings/MfaViews'
 
 type Tab = SettingsTab
+
+/**
+ * Every settings error goes through flow-nav: privileged-session refresh and
+ * aal2 step-up come back to this exact page (flow + tab), an expired session
+ * signs in and returns here, an expired flow restarts with its return_to.
+ */
+function onSettingsError(err: unknown, ctx: FlowContext, fallback: string, refetch: () => void, setError?: (m: string) => void) {
+  applyNav<SettingsFlow>(resolveKratosError(err, errorNavOptions('settings', ctx, fallback, window.location.href)), {
+    setFlow: refetch,
+    refetch,
+    setError: setError ?? refetch,
+  })
+}
+
+/**
+ * A successful save: follow Kratos' continue_with (e.g. back to the site that
+ * sent the user to enrol 2FA). An unverified address makes Kratos prepend
+ * show_verification_ui to every save — only follow it for profile edits.
+ */
+function onSettingsSaved(data: unknown, flow: SettingsFlow, method: string, refetch: () => void) {
+  const hash = typeof window !== 'undefined' ? window.location.hash : ''
+  if (handleContinueWith(data, flow.return_to, { skipVerification: method !== 'profile', currentSettingsFlowId: flow.id, hash })) return
+  refetch()
+}
 
 function SettingsPageContent() {
   const [flow, setFlow] = useState<SettingsFlow | null>(null)
@@ -48,9 +74,10 @@ function SettingsPageContent() {
     if (validTabs.includes(fromStore as Tab)) {
       setTabRaw(fromStore as Tab)
       window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#${fromStore}`)
-      // Single-shot restore: clear so the tab isn't sticky across days
-      // / sessions when the user later opens /settings without a hash.
-      window.sessionStorage.removeItem(STORE_KEY)
+      // Kept, not cleared: a re-auth chain passes through several hash-less
+      // hops (settings init → refresh login → Kratos → /settings?flow=), and
+      // each must land on the same tab. sessionStorage dies with the browser
+      // tab; picking a tab overwrites it.
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -116,20 +143,30 @@ function SettingsPageContent() {
         setNetworkError(null)
       })
       .catch((err) => {
-        const status = err?.response?.status
-        if (status === 403 || status === 404 || status === 410) {
-          window.location.href = initFlowUrl('settings', returnTo)
-          return
+        // 403 session_aal2_required (e.g. right after a recovery link with
+        // 2FA enrolled): Kratos' redirect already returns to this flow.
+        const showError = (m: string) => {
+          setNetworkError(m)
+          setLoading(false)
         }
-        setNetworkError("Can't reach the server. Check your connection.")
-        setLoading(false)
+        const msg = "Can't reach the server. Check your connection."
+        onSettingsError(err, returnTo ? { returnTo } : {}, msg, () => showError(msg), showError)
       })
       .finally(() => { fetchingRef.current = false })
   }, [returnTo])
 
   useEffect(() => {
     if (!flowId) {
-      window.location.href = initFlowUrl('settings', returnTo)
+      // Without a session Kratos' settings init sends the browser to login
+      // with return_to = OUR return_to, so after signing in the user lands
+      // there instead of on settings. Sign in first, returning here.
+      void createBrowserClient()
+        .toSession()
+        .then(() => { window.location.assign(initFlowUrl('settings', returnTo)) })
+        .catch((err) => {
+          const status = (err as { response?: { status?: number } })?.response?.status
+          window.location.assign(status === 401 ? initFlowUrl('login', window.location.href) : initFlowUrl('settings', returnTo))
+        })
       return
     }
     fetchFlow(flowId)
@@ -160,20 +197,9 @@ function SettingsPageContent() {
       }
       const body = { method: 'profile', traits: traitsObj, csrf_token: getCsrfToken(flow) } as unknown as UpdateSettingsFlowBody
       const { data } = await createBrowserClient().updateSettingsFlow({ flow: flow.id, updateSettingsFlowBody: body })
-      if (handleContinueWith(data)) return
-      fetchFlow(flow.id)
+      onSettingsSaved(data, flow, 'profile', () => fetchFlow(flow.id))
     } catch (err: unknown) {
-      const e2 = err as { response?: { status?: number; data?: { redirect_browser_to?: string } } }
-      const status = e2?.response?.status
-      const redirect = e2?.response?.data?.redirect_browser_to
-      if (status === 422 && redirect) window.location.href = redirect
-      else if (status === 400 || status === 422) fetchFlow(flow.id)
-      else if (status === 403 && redirect) window.location.href = redirect
-      else if (status === 403) {
-        window.location.href = `/login?refresh=true&return_to=${encodeURIComponent(window.location.href)}`
-      }
-      else if (status === 410) window.location.href = initFlowUrl('settings', returnTo)
-      else setNetworkError('Profile update failed.')
+      onSettingsError(err, flowContext(flow), 'Profile update failed.', () => fetchFlow(flow.id), setNetworkError)
     } finally { setSubmitting(null) }
   }
 
@@ -186,25 +212,11 @@ function SettingsPageContent() {
       const body = { method: 'password', password: newPw, csrf_token: getCsrfToken(flow) } as UpdateSettingsFlowBody
       const { data } = await createBrowserClient().updateSettingsFlow({ flow: flow.id, updateSettingsFlowBody: body })
       setNewPw('')
-      // Kratos may chain into a refresh login flow via continue_with on 403.
-      if (handleContinueWith(data)) return
-      fetchFlow(flow.id)
+      onSettingsSaved(data, flow, 'password', () => fetchFlow(flow.id))
     } catch (err: unknown) {
-      const e2 = err as { response?: { status?: number; data?: { redirect_browser_to?: string } } }
-      const status = e2?.response?.status
-      const redirect = e2?.response?.data?.redirect_browser_to
-      if (status === 422 && redirect) window.location.href = redirect
-      else if (status === 400 || status === 422) fetchFlow(flow.id)
-      else if (status === 403 && redirect) {
-        // Privileged session expired — Kratos returns redirect to /login?refresh=true.
-        window.location.href = redirect
-      }
-      else if (status === 403) {
-        // Fallback: trigger refresh login manually.
-        window.location.href = `/login?refresh=true&return_to=${encodeURIComponent(window.location.href)}`
-      }
-      else if (status === 410) window.location.href = initFlowUrl('settings', returnTo)
-      else setNetworkError('Password update failed.')
+      // Past privileged_session_max_age Kratos answers 403
+      // session_refresh_required → re-auth, then back to this flow.
+      onSettingsError(err, flowContext(flow), 'Password update failed.', () => fetchFlow(flow.id), setNetworkError)
     } finally { setSubmitting(null) }
   }
 
@@ -315,29 +327,16 @@ function MfaTotpSection({ flow, onChanged }: { flow: SettingsFlow; onChanged: ()
         ? { method: 'totp', totp_code: code, csrf_token: getCsrfToken(flow) }
         : { method: 'totp', totp_unlink: true, csrf_token: getCsrfToken(flow) }
       const { data } = await createBrowserClient().updateSettingsFlow({ flow: flow.id, updateSettingsFlowBody: body as UpdateSettingsFlowBody })
-      // Kratos may chain into a refresh login flow via continue_with on 403.
-      if (handleContinueWith(data)) return
       setCode('')
-      onChanged()
+      onSettingsSaved(data, flow, 'totp', onChanged)
     } catch (err: unknown) {
       // Privileged-session check: TOTP enroll/unlink is sensitive, so Kratos
-      // requires a recent re-auth (privileged_session_max_age, default 15m).
-      // When stale, it returns 403 with redirect_browser_to → /login?refresh=true.
-      const e2 = err as { response?: { status?: number; data?: { redirect_browser_to?: string } } }
-      const status = e2?.response?.status
-      const redirect = e2?.response?.data?.redirect_browser_to
-      if (status === 403 && redirect) window.location.href = redirect
-      else if (status === 403) {
-        window.location.href = `/login?refresh=true&return_to=${encodeURIComponent(window.location.href)}`
-      } else if (status === 410) window.location.reload()
-      else {
-        // 400/422: Kratos returned the updated flow with field-level errors
-        // (e.g. "the provided code did not match"). Re-fetch so the input
-        // surfaces them. Also clear the stale code so the user sees the
-        // error prompt clearly and re-enters a fresh one (TOTP rotates 30s).
-        setCode('')
-        onChanged()
-      }
+      // requires a recent re-auth (privileged_session_max_age) and answers
+      // 403 session_refresh_required. 400: the updated flow carries the
+      // field error ("the provided code did not match") — clear the stale
+      // code (TOTP rotates every 30 s) and re-render.
+      setCode('')
+      onSettingsError(err, flowContext(flow), 'Could not update the authenticator app.', onChanged)
     } finally { setSubmitting(false) }
   }
 
@@ -372,19 +371,10 @@ function MfaWebauthnSection({ flow, onChanged }: { flow: SettingsFlow; onChanged
     try {
       const body = { method: 'passkey', passkey_remove: id, csrf_token: getCsrfToken(flow) } as UpdateSettingsFlowBody
       const { data } = await createBrowserClient().updateSettingsFlow({ flow: flow.id, updateSettingsFlowBody: body })
-      if (handleContinueWith(data)) return
-      onChanged()
+      onSettingsSaved(data, flow, 'passkey', onChanged)
     } catch (err: unknown) {
-      // Same privileged-session dance as TOTP: removal is sensitive, Kratos
-      // 403s with redirect_browser_to → /login?refresh=true when stale.
-      const e2 = err as { response?: { status?: number; data?: { redirect_browser_to?: string } } }
-      const status = e2?.response?.status
-      const redirect = e2?.response?.data?.redirect_browser_to
-      if (status === 403 && redirect) window.location.assign(redirect)
-      else if (status === 403) {
-        window.location.assign(`/login?refresh=true&return_to=${encodeURIComponent(window.location.href)}`)
-      } else if (status === 410) window.location.reload()
-      else onChanged()
+      // Same privileged-session dance as TOTP.
+      onSettingsError(err, flowContext(flow), 'Could not remove the passkey.', onChanged)
     } finally { setSubmitting(null) }
   }
 
@@ -416,19 +406,10 @@ function MfaLookupSection({ flow, account, onChanged }: { flow: SettingsFlow; ac
         csrf_token: getCsrfToken(flow),
       } as UpdateSettingsFlowBody
       const { data } = await createBrowserClient().updateSettingsFlow({ flow: flow.id, updateSettingsFlowBody: body })
-      if (handleContinueWith(data)) return
-      onChanged()
+      onSettingsSaved(data, flow, 'lookup_secret', onChanged)
     } catch (err: unknown) {
-      // Same privileged-session redirect as TOTP — Kratos returns 403 with
-      // redirect_browser_to when the session is stale (>privileged_session_max_age).
-      const e2 = err as { response?: { status?: number; data?: { redirect_browser_to?: string } } }
-      const status = e2?.response?.status
-      const redirect = e2?.response?.data?.redirect_browser_to
-      if (status === 403 && redirect) window.location.href = redirect
-      else if (status === 403) {
-        window.location.href = `/login?refresh=true&return_to=${encodeURIComponent(window.location.href)}`
-      } else if (status === 410) window.location.reload()
-      else onChanged()
+      // Same privileged-session redirect as TOTP.
+      onSettingsError(err, flowContext(flow), 'Could not update backup codes.', onChanged)
     } finally { setSubmitting(false) }
   }
 

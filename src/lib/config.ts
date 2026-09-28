@@ -36,6 +36,14 @@ function makeConfig() {
       return { browserUrl: browser, publicUrl }
     },
 
+    // After a first-factor sign-in, prompt identities that have a second
+    // factor for it right away (aal2), even when Kratos' whoami only
+    // requires aal1. 'false' restores password-only sign-in.
+    get stepUpAfterLogin(): boolean { return env('NEXT_PUBLIC_STEP_UP_AFTER_LOGIN') !== 'false' },
+
+    // Admin console (kuma), linked from /welcome when sites can't be listed.
+    get consoleUrl(): string { return env('NEXT_PUBLIC_CONSOLE_URL') || '' },
+
     get defaultReturnUrl(): string { return env('NEXT_PUBLIC_DEFAULT_RETURN_URL') || '/' },
     get allowedReturnUrls(): string[] {
       return (env('NEXT_PUBLIC_ALLOWED_RETURN_URLS') || '*').split(',').map(s => s.trim())
@@ -95,20 +103,35 @@ export function getThemeCssVariables(): string {
   `
 }
 
-// Validate return URL against allowed patterns
+// Validate return URL against allowed patterns.
+// Only absolute http(s) URLs without userinfo pass (never javascript:/data:).
+// Each pattern is an origin (`https://app.example.com`, `http://localhost:3001`)
+// where `*` stands for exactly ONE DNS label: every regex metacharacter is
+// escaped first, `*` becomes `[a-z0-9-]+`, and the whole origin is anchored —
+// so `https://*.example.com` accepts `https://app.example.com` but not
+// `https://a.b.example.com`, `https://attacker-example.com`,
+// `https://x.example.com.evil.io` or `https://x.example.com@evil.io`.
+// A lone `*` allows any http(s) URL (dev default — set
+// NEXT_PUBLIC_ALLOWED_RETURN_URLS in production).
 export function isReturnUrlAllowed(url: string): boolean {
-  if (config.allowedReturnUrls.includes('*')) return true
-  
+  let parsed: URL
   try {
-    const parsed = new URL(url)
-    return config.allowedReturnUrls.some(pattern => {
-      if (pattern.includes('*')) {
-        const regex = new RegExp('^' + pattern.replace(/\*/g, '.*') + '$')
-        return regex.test(parsed.origin)
-      }
-      return parsed.origin === pattern
-    })
+    parsed = new URL(url)
   } catch {
     return false
   }
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return false
+  if (parsed.username || parsed.password) return false
+  const origin = parsed.origin.toLowerCase()
+  return config.allowedReturnUrls.some((pattern) => {
+    if (pattern === '*') return true
+    return originPattern(pattern)?.test(origin) ?? false
+  })
+}
+
+function originPattern(pattern: string): RegExp | null {
+  const p = pattern.trim().toLowerCase().replace(/\/+$/, '')
+  if (!/^https?:\/\/[^/?#@]+$/.test(p)) return null
+  const escaped = p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\\\*/g, '[a-z0-9-]+')
+  return new RegExp(`^${escaped}$`)
 }

@@ -23,6 +23,8 @@ export interface SiteBranding {
   helpUrl: string | null
   minAal: MinAal | null
   scope: TwoFactorScope | null
+  /** Where a visitor of this site lands when a flow has no return_to (still checked against the allow-list before use). */
+  defaultReturnUrl?: string | null
 }
 
 const MAX_DISPLAY_NAME = 60
@@ -66,13 +68,13 @@ export function isValidHost(host: string): boolean {
 }
 
 /** Strip control and bidi-override characters, collapse spaces, cap length. */
-function cleanText(v: unknown, max: number): string | null {
+export function cleanText(v: unknown, max: number): string | null {
   if (typeof v !== 'string') return null
   const s = v.replace(/[\u0000-\u001F\u007F-\u009F\u202A-\u202E\u2066-\u2069]/g, '').replace(/\s+/g, ' ').trim()
   return s ? s.slice(0, max) : null
 }
 
-function normaliseHex(v: unknown): string | null {
+export function normaliseHex(v: unknown): string | null {
   if (typeof v !== 'string') return null
   const m = HEX.exec(v.trim())
   return m ? `#${m[1].toUpperCase()}` : null
@@ -120,7 +122,7 @@ export function accentVars(hex: string): Record<string, string> {
   }
 }
 
-function safeHttpUrl(v: unknown): string | null {
+export function safeHttpUrl(v: unknown): string | null {
   if (typeof v !== 'string' || v.length > 2048) return null
   try {
     const u = new URL(v)
@@ -157,6 +159,7 @@ export function sanitizeBranding(raw: unknown, host: string): SiteBranding | nul
     helpUrl: safeHttpUrl(r.helpUrl),
     minAal: r.minAal === 'aal1' || r.minAal === 'aal2' ? r.minAal : null,
     scope: ['none', 'writes', 'all', 'routes'].includes(r.scope as string) ? (r.scope as TwoFactorScope) : null,
+    defaultReturnUrl: safeHttpUrl(r.defaultReturnUrl),
   }
 }
 

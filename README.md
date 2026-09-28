@@ -105,8 +105,10 @@ See [`.env.example`](./.env.example) for a copy-pasteable template.
 
 | Variable | Required | Default | Description |
 |---|:---:|---|---|
-| `NEXT_PUBLIC_DEFAULT_RETURN_URL` | recommended | `/` | Destination after a successful flow when no `return_to` is supplied. |
-| `NEXT_PUBLIC_ALLOWED_RETURN_URLS` | recommended | `*` (allow-all) | Comma-separated allow-list of origins for `return_to`. Supports `*` wildcards. Example: `https://*.example.com,https://app.example.com` |
+| `NEXT_PUBLIC_DEFAULT_RETURN_URL` | optional | `/` | Reported by `/api/config` only. Flows without a valid `return_to` land on `/welcome` (site landing or picker), never on a static default. |
+| `NEXT_PUBLIC_ALLOWED_RETURN_URLS` | recommended | `*` (any http(s) URL) | Comma-separated allow-list of origins for `return_to`, each an origin where `*` matches exactly one DNS label: `https://*.example.com` matches `app.example.com` but not `a.b.example.com`. Anything else matches its exact origin. Flows without a valid `return_to` land on `/welcome` (see `docs/FLOWS.md`). Example: `https://*.example.com,https://app.example.com` |
+| `NEXT_PUBLIC_CONSOLE_URL` | optional | — | Admin console (kuma) linked from `/welcome` when the visitor's sites can't be listed. |
+| `NEXT_PUBLIC_STEP_UP_AFTER_LOGIN` | optional | `true` | Ask identities that have a second factor for it right after the first factor, even when Kratos' `session.whoami.required_aal` is `aal1`. `false` allows password-only sign-in. See `docs/FLOWS.md`. |
 
 > **Security note**: `*` is fine for dev but lets any site send a user through your auth UI back to itself. Always set a specific allow-list in production.
 

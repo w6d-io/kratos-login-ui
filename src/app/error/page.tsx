@@ -4,7 +4,7 @@ import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { FlowError } from '@ory/client'
 import { createBrowserClient } from '@/lib/kratos'
-import { config, isReturnUrlAllowed } from '@/lib/config'
+import { landingUrl } from '@/lib/flow-nav'
 import { Loading } from '@/components/Loading'
 import { FlowCard } from '@/components/flow/FlowCard'
 import { CopyButton } from '@/components/flow/Parts'
@@ -18,7 +18,8 @@ function ErrorPageContent() {
 
   const errorId = searchParams.get('id')
   const rawReturnTo = searchParams.get('return_to') || ''
-  const returnTo = isReturnUrlAllowed(rawReturnTo) ? rawReturnTo : config.defaultReturnUrl
+  // A valid return_to, else /welcome (site landing or picker) — never a static default.
+  const returnTo = typeof window === 'undefined' ? '/welcome' : landingUrl(rawReturnTo, window.location.origin)
 
   useEffect(() => {
     if (!errorId) {

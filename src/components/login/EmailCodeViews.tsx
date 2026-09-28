@@ -191,6 +191,8 @@ export function RecoveryView(p: Shared & {
 
 export function VerificationView(p: Shared & {
   flow: VerificationFlow
+  /** Where "Continue" goes after success; defaults to the flow's return_to, else /login. */
+  continueUrl?: string
   stage: 'request' | 'verify' | 'success'
   code: string
   setCode: (v: string) => void
@@ -199,7 +201,7 @@ export function VerificationView(p: Shared & {
   onResend: () => void | Promise<unknown>
 }) {
   if (p.stage === 'success') {
-    const next = (p.flow as { return_to?: string }).return_to || '/login'
+    const next = p.continueUrl ?? ((p.flow as { return_to?: string }).return_to || '/login')
     return (
       <FlowCard
         icon={<Icons.CheckCircle size={20} />}

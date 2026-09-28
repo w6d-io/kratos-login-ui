@@ -15,6 +15,8 @@ import {
 } from '@/lib/kratos-flow'
 import { extractFlowBanners } from '@/lib/flow-messages'
 import { RecoveryView } from '@/components/login/EmailCodeViews'
+import { flowContext, resolveKratosError } from '@/lib/flow-nav'
+import { applyNav, errorNavOptions, rememberFlowOrigin } from '@/lib/flow-nav-browser'
 
 type Stage = 'request' | 'verify'
 
@@ -29,6 +31,7 @@ function RecoveryPageContent() {
   const searchParams = useSearchParams()
   useBrandingReturnTo(flow?.return_to)
   const flowId = searchParams.get('flow')
+  const urlReturnTo = searchParams.get('return_to') || ''
   const fetchingRef = useRef(false)
 
   const fetchFlow = useCallback((id: string) => {
@@ -50,40 +53,36 @@ function RecoveryPageContent() {
       })
       .catch((err) => {
         const status = err?.response?.status
-        // Avoid an infinite loop when Kratos has recovery disabled — re-init
-        // would return 404 again. Only re-init for in-flight expirations.
-        if (status === 410) {
-          window.location.href = initFlowUrl('recovery')
-          return
-        }
+        // Recovery disabled: re-init would 404 again — say so instead.
         if (status === 404) {
           setNetworkError('Account recovery is not available on this instance.')
           setLoading(false)
           return
         }
-        if (status === 403) {
-          setNetworkError('You are signed in. Sign out first to use account recovery.')
-          setLoading(false)
-          return
-        }
-        setNetworkError("Can't reach the server. Check your connection.")
-        setLoading(false)
+        // 410 expired / 403 CSRF → restart (keeping return_to), guarded.
+        const navigating = applyNav(resolveKratosError(err, errorNavOptions('recovery', urlReturnTo ? { returnTo: urlReturnTo } : {}, "Can't reach the server. Check your connection.")), {
+          setFlow: () => undefined,
+          refetch: () => setNetworkError("Can't reach the server. Check your connection."),
+          setError: setNetworkError,
+        })
+        if (!navigating) setLoading(false)
       })
       .finally(() => { fetchingRef.current = false })
-  }, [])
+  }, [urlReturnTo])
 
   useEffect(() => {
+    rememberFlowOrigin()
     if (!flowId) {
-      window.location.href = initFlowUrl('recovery')
+      window.location.href = initFlowUrl('recovery', urlReturnTo)
       return
     }
     fetchFlow(flowId)
-  }, [flowId, fetchFlow])
+  }, [flowId, urlReturnTo, fetchFlow])
 
   const banners = useMemo(() => extractFlowBanners(flow), [flow])
 
-  const submitRequest = async (e: React.FormEvent) => {
-    e.preventDefault()
+  /** Send (or re-send) the email on this flow; also the view's resend action. */
+  const sendRequest = async () => {
     if (!flow) return
     setSubmitting(true)
     setNetworkError(null)
@@ -95,13 +94,19 @@ function RecoveryPageContent() {
       await createBrowserClient().updateRecoveryFlow({ flow: flow.id, updateRecoveryFlowBody: body })
       fetchFlow(flow.id)
     } catch (err: unknown) {
-      const status = (err as { response?: { status?: number } })?.response?.status
-      if (status === 400 || status === 422) fetchFlow(flow.id)
-      else if (status === 410) window.location.href = initFlowUrl('recovery')
-      else setNetworkError('Could not send recovery. Try again.')
+      applyNav(resolveKratosError(err, errorNavOptions('recovery', flowContext(flow), 'Could not send recovery. Try again.')), {
+        setFlow: () => fetchFlow(flow.id),
+        refetch: () => fetchFlow(flow.id),
+        setError: setNetworkError,
+      })
     } finally {
       setSubmitting(false)
     }
+  }
+
+  const submitRequest = (e: React.FormEvent) => {
+    e.preventDefault()
+    void sendRequest()
   }
 
   const submitCode = async (e: React.FormEvent) => {
@@ -114,19 +119,17 @@ function RecoveryPageContent() {
         flow: flow.id,
         updateRecoveryFlowBody: { method: 'code', code, csrf_token: getCsrfToken(flow) } as UpdateRecoveryFlowBody,
       })
-      if (handleContinueWith(data)) return
+      if (handleContinueWith(data, flow.return_to)) return
       window.location.href = '/settings'
     } catch (err: unknown) {
-      const r = (err as { response?: { status?: number; data?: { redirect_browser_to?: string } } })?.response
-      const status = r?.status
       // Successful recovery answers 422 browser_location_change_required with
-      // the privileged settings-flow URL — follow it or the user is stuck
-      // re-submitting a code Kratos has already consumed.
-      const redirect = r?.data?.redirect_browser_to
-      if (status === 422 && redirect) { window.location.href = redirect; return }
-      if (status === 400 || status === 422) fetchFlow(flow.id)
-      else if (status === 410) window.location.href = initFlowUrl('recovery')
-      else setNetworkError('Code rejected. Try again.')
+      // the privileged settings-flow URL — flow-nav follows it, or the user is
+      // stuck re-submitting a code Kratos has already consumed.
+      applyNav(resolveKratosError(err, errorNavOptions('recovery', flowContext(flow), 'Code rejected. Try again.')), {
+        setFlow: () => fetchFlow(flow.id),
+        refetch: () => fetchFlow(flow.id),
+        setError: setNetworkError,
+      })
     } finally {
       setSubmitting(false)
     }
@@ -148,7 +151,7 @@ function RecoveryPageContent() {
       onSubmitRequest={submitRequest}
       onSubmitCode={submitCode}
       onChangeEmail={() => { setCode(''); setStage('request') }}
-      onResend={() => submitRequest({ preventDefault: () => {} } as React.FormEvent)}
+      onResend={sendRequest}
     />
   )
 }

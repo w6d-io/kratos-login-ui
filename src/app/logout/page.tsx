@@ -1,10 +1,10 @@
 'use client'
 
-import { Suspense, useEffect, useState } from 'react'
+import { Suspense, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { createBrowserClient } from '@/lib/kratos'
-import { config, isReturnUrlAllowed } from '@/lib/config'
+import { safeReturnTo } from '@/lib/flow-nav'
 import { Loading } from '@/components/Loading'
 import { FlowCard } from '@/components/flow/FlowCard'
 import { Icons } from '@/components/ui/Icons'
@@ -17,10 +17,19 @@ function LogoutPageContent() {
   const searchParams = useSearchParams()
 
   const rawReturnTo = searchParams.get('return_to') || ''
-  const returnTo = isReturnUrlAllowed(rawReturnTo) ? rawReturnTo : config.defaultReturnUrl
+  // Same-origin paths (e.g. "use another account" → /login?return_to=…) and
+  // allowed URLs only; Kratos re-validates it on the logout flow.
+  const origin = typeof window !== 'undefined' ? window.location.origin : ''
+  const returnTo = (origin && safeReturnTo(rawReturnTo, origin)) || `${origin}/login`
   const auto = searchParams.get('confirm') !== 'false'
 
+  // One logout flow per visit: a second one (effect re-run) racing the first
+  // navigation reaches Kratos after the session is gone and lands on the
+  // error page (session_inactive).
+  const startedRef = useRef(false)
   useEffect(() => {
+    if (startedRef.current) return
+    startedRef.current = true
     createBrowserClient()
       .createBrowserLogoutFlow({ returnTo })
       .then(({ data }) => {

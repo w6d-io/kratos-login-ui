@@ -31,7 +31,7 @@ export function FlowCard({ icon, tone = 'neutral', title, subtitle, children, fo
 
   return (
     <div className="card" ref={card}>
-      <div className="card-head">
+      <div className={`card-head ${children ? '' : 'solo'}`}>
         {icon && <div className={`card-icon ${tone === 'neutral' ? '' : tone}`} aria-hidden>{icon}</div>}
         <h1 ref={heading} tabIndex={-1}>{title}</h1>
         {subtitle && <p>{subtitle}</p>}

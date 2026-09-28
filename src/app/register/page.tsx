@@ -16,6 +16,9 @@ import {
 } from '@/lib/kratos-flow'
 import { extractFlowBanners } from '@/lib/flow-messages'
 import { RegisterView } from '@/components/login/RegisterView'
+import { flowContext, resolveKratosError } from '@/lib/flow-nav'
+import { applyNav, errorNavOptions, rememberFlowOrigin } from '@/lib/flow-nav-browser'
+import { signInUrl } from '@/lib/access'
 
 function RegisterPageContent() {
   const [flow, setFlow] = useState<RegistrationFlow | null>(null)
@@ -51,18 +54,18 @@ function RegisterPageContent() {
         setNetworkError(null)
       })
       .catch((err) => {
-        const status = err?.response?.status
-        if (status === 403 || status === 404 || status === 410) {
-          window.location.href = initFlowUrl('registration', returnTo)
-          return
-        }
-        setNetworkError("Can't reach the server. Check your connection and try again.")
-        setLoading(false)
+        const navigating = applyNav(resolveKratosError(err, errorNavOptions('registration', returnTo ? { returnTo } : {}, "Can't reach the server. Check your connection and try again.")), {
+          setFlow: () => undefined,
+          refetch: () => setNetworkError("Can't reach the server. Check your connection and try again."),
+          setError: setNetworkError,
+        })
+        if (!navigating) setLoading(false)
       })
       .finally(() => { fetchingRef.current = false })
   }, [returnTo])
 
   useEffect(() => {
+    rememberFlowOrigin()
     if (!flowId) {
       window.location.href = initFlowUrl('registration', returnTo)
       return
@@ -124,18 +127,16 @@ function RegisterPageContent() {
       ) as unknown as UpdateRegistrationFlowBody
 
       const { data } = await createBrowserClient().updateRegistrationFlow({ flow: flow.id, updateRegistrationFlowBody: body })
-      if (handleContinueWith(data, returnTo)) return
+      if (handleContinueWith(data, flow.return_to || returnTo)) return
       fetchFlow(flow.id)
     } catch (err: unknown) {
-      const r = (err as { response?: { status?: number; data?: { redirect_browser_to?: string } } })?.response
-      const status = r?.status
       // 422 browser_location_change_required = registration succeeded and
       // Kratos wants the browser elsewhere (e.g. verification) — follow it.
-      const redirect = r?.data?.redirect_browser_to
-      if (status === 422 && redirect) { window.location.href = redirect; return }
-      if (status === 400 || status === 422) fetchFlow(flow.id)
-      else if (status === 410) window.location.href = initFlowUrl('registration', returnTo)
-      else setNetworkError("Sign-up failed. Please try again.")
+      applyNav(resolveKratosError(err, errorNavOptions('registration', flowContext(flow), 'Sign-up failed. Please try again.')), {
+        setFlow: () => fetchFlow(flow.id),
+        refetch: () => fetchFlow(flow.id),
+        setError: setNetworkError,
+      })
     } finally {
       setSubmitting(false)
     }
@@ -182,6 +183,7 @@ function RegisterPageContent() {
       hasProfileStep={hasProfileStep}
       hasPasskey={hasGroup(flow, 'passkey')}
       returnTo={returnTo}
+      signInHref={signInUrl(flow?.return_to || returnTo || null)}
       onSubmit={onSubmit}
       onSubmitOidc={onSubmitOidc}
     />

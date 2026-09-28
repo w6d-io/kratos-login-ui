@@ -39,6 +39,7 @@
   overflow-wrap: anywhere;
 }
 .card-body { padding: var(--space-5) var(--space-6) var(--space-6); }
+.card-head.solo { padding-bottom: var(--space-6); }
 .card-foot {
   padding: var(--space-4) var(--space-6);
   border-top: 1px solid var(--color-border);
@@ -52,6 +53,7 @@
 .card-foot .back { display: inline-flex; align-items: center; gap: var(--space-1); }
 @media (max-width: 480px) {
   .card-head { padding: var(--space-5) var(--space-5) 0; }
+  .card-head.solo { padding-bottom: var(--space-5); }
   .card-body { padding: var(--space-4) var(--space-5) var(--space-5); }
   .card-foot { padding: var(--space-3) var(--space-5); }
 }
@@ -224,3 +226,26 @@
 .card-loading .card-head .skeleton + .skeleton { height: 18px; width: 84%; margin-top: var(--space-2); }
 .card-loading .card-body .skeleton { height: var(--control-lg); margin-top: var(--space-3); }
 .card-loading .card-body .skeleton.label { height: 14px; width: 30%; margin-top: var(--space-4); }
+
+/* ── "Where to?" site picker ─────────────────────────────────────────── */
+.site-link { text-decoration: none; color: var(--color-text); }
+.site-link:hover { text-decoration: none; }
+.site-tile {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-2);
+  color: var(--color-text);
+  font-weight: var(--weight-semibold);
+  object-fit: contain;
+}
+/* An accent tints the tile; the letter stays --color-text so it reads in both themes. */
+.site-tile[data-accent] {
+  background: color-mix(in srgb, var(--tile-accent) 16%, var(--color-surface));
+  border-color: color-mix(in srgb, var(--tile-accent) 40%, var(--color-surface));
+}
+.welcome-foot { display: inline-flex; flex-wrap: wrap; justify-content: center; gap: var(--space-2) var(--space-4); }

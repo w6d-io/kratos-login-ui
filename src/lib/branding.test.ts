@@ -79,6 +79,7 @@ describe('sanitizeBranding', () => {
     helpUrl: 'https://payroll.dev.example.com/help',
     minAal: 'aal2',
     scope: 'writes',
+    defaultReturnUrl: 'https://payroll.dev.example.com/home',
     internalField: 'must not leak',
   }
 
@@ -94,7 +95,13 @@ describe('sanitizeBranding', () => {
       helpUrl: 'https://payroll.dev.example.com/help',
       minAal: 'aal2',
       scope: 'writes',
+      defaultReturnUrl: 'https://payroll.dev.example.com/home',
     })
+  })
+
+  it('keeps only an http(s) defaultReturnUrl', () => {
+    expect(sanitizeBranding({ ...good, defaultReturnUrl: 'javascript:alert(1)' }, 'h')!.defaultReturnUrl).toBeNull()
+    expect(sanitizeBranding({ ...good, defaultReturnUrl: null }, 'h')!.defaultReturnUrl).toBeNull()
   })
 
   it('returns null for non-objects or a missing name', () => {

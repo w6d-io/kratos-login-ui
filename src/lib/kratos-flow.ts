@@ -7,6 +7,8 @@ import type {
   UiNode,
   UiNodeInputAttributes,
 } from '@ory/client'
+import { resolveContinueWith, type ContinueOptions } from './flow-nav'
+import { continueNavOptions } from './flow-nav-browser'
 
 /**
  * Helpers to read Kratos flow UI nodes and turn them into shape our forms
@@ -239,68 +241,18 @@ function mapInput(n: UiNode): FlowField {
 /**
  * Follow a Kratos `continue_with` chain returned on flow update success.
  * Returns true if a navigation was issued (caller should stop further work).
- *
- * Possible actions per Kratos v26 docs:
- *  - redirect_browser_to: navigate to URL (after registration / login complete)
- *  - show_verification_ui: navigate to /verification?flow=...
- *  - show_recovery_ui:     navigate to /recovery?flow=...
- *  - show_settings_ui:     navigate to /settings?flow=... (post-recovery)
- *  - set_ory_session_token: a token-based action (no UI) — caller may store
- *
- * If the flow ALSO returns a `session` field, the user is logged in; we
- * follow the redirect URL or fall back to returnTo.
+ * Thin browser wrapper over flow-nav's resolveContinueWith (validated
+ * targets, loop-safe landing); a same-flow settings redirect or a
+ * directive-less answer returns false so the caller re-renders.
  */
-type ContinueAction = {
-  action: string
-  redirect_browser_to?: string
-  flow?: { id: string }
-  ory_session_token?: string
-}
-
 export function handleContinueWith(
   data: unknown,
   returnTo?: string,
+  opts?: Pick<ContinueOptions, 'skipVerification' | 'currentSettingsFlowId' | 'hash'>,
 ): boolean {
-  const cw = (data as { continue_with?: ContinueAction[] }).continue_with
-  if (cw && Array.isArray(cw)) {
-    for (const c of cw) {
-      switch (c.action) {
-        case 'redirect_browser_to':
-          if (c.redirect_browser_to) {
-            window.location.href = c.redirect_browser_to
-            return true
-          }
-          break
-        case 'show_verification_ui':
-          if (c.flow?.id) {
-            window.location.href = `/verification?flow=${c.flow.id}`
-            return true
-          }
-          break
-        case 'show_recovery_ui':
-          if (c.flow?.id) {
-            window.location.href = `/recovery?flow=${c.flow.id}`
-            return true
-          }
-          break
-        case 'show_settings_ui':
-          if (c.flow?.id) {
-            // Preserve the active settings tab via the URL hash so a
-            // refresh chain (TOTP enroll past privileged_session_max_age,
-            // password change, etc.) lands the user back on the section
-            // they were operating on instead of the default 'profile'.
-            const hash = typeof window !== 'undefined' ? window.location.hash : ''
-            window.location.href = `/settings?flow=${c.flow.id}${hash}`
-            return true
-          }
-          break
-        // set_ory_session_token: token actions don't trigger nav by themselves.
-      }
-    }
-  }
-  // No continue_with directives — if a session is present we treat as success.
-  if ((data as { session?: unknown }).session) {
-    window.location.href = returnTo || '/'
+  const action = resolveContinueWith(data, { ...continueNavOptions(), returnTo, ...opts })
+  if (action?.kind === 'redirect') {
+    window.location.assign(action.to)
     return true
   }
   return false

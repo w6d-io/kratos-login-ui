@@ -15,6 +15,8 @@ import {
 } from '@/lib/kratos-flow'
 import { extractFlowBanners } from '@/lib/flow-messages'
 import { VerificationView } from '@/components/login/EmailCodeViews'
+import { flowContext, landingUrl, resolveKratosError } from '@/lib/flow-nav'
+import { applyNav, errorNavOptions, rememberFlowOrigin } from '@/lib/flow-nav-browser'
 
 type Stage = 'request' | 'verify' | 'success'
 
@@ -29,6 +31,7 @@ function VerificationPageContent() {
   const searchParams = useSearchParams()
   useBrandingReturnTo(flow?.return_to)
   const flowId = searchParams.get('flow')
+  const urlReturnTo = searchParams.get('return_to') || ''
   const fetchingRef = useRef(false)
 
   const fetchFlow = useCallback((id: string) => {
@@ -49,38 +52,35 @@ function VerificationPageContent() {
       })
       .catch((err) => {
         const status = err?.response?.status
-        if (status === 410) {
-          window.location.href = initFlowUrl('verification')
-          return
-        }
+        // Verification disabled: re-init would 404 again — say so instead.
         if (status === 404) {
           setNetworkError('Email verification is not available on this instance.')
           setLoading(false)
           return
         }
-        if (status === 403) {
-          setNetworkError('You are not allowed to verify in the current state.')
-          setLoading(false)
-          return
-        }
-        setNetworkError("Can't reach the server. Check your connection.")
-        setLoading(false)
+        const navigating = applyNav(resolveKratosError(err, errorNavOptions('verification', urlReturnTo ? { returnTo: urlReturnTo } : {}, "Can't reach the server. Check your connection.")), {
+          setFlow: () => undefined,
+          refetch: () => setNetworkError("Can't reach the server. Check your connection."),
+          setError: setNetworkError,
+        })
+        if (!navigating) setLoading(false)
       })
       .finally(() => { fetchingRef.current = false })
-  }, [])
+  }, [urlReturnTo])
 
   useEffect(() => {
+    rememberFlowOrigin()
     if (!flowId) {
-      window.location.href = initFlowUrl('verification')
+      window.location.href = initFlowUrl('verification', urlReturnTo)
       return
     }
     fetchFlow(flowId)
-  }, [flowId, fetchFlow])
+  }, [flowId, urlReturnTo, fetchFlow])
 
   const banners = useMemo(() => extractFlowBanners(flow), [flow])
 
-  const submitRequest = async (e: React.FormEvent) => {
-    e.preventDefault()
+  /** Send (or re-send) the email on this flow; also the view's resend action. */
+  const sendRequest = async () => {
     if (!flow) return
     setSubmitting(true)
     setNetworkError(null)
@@ -90,13 +90,19 @@ function VerificationPageContent() {
       await createBrowserClient().updateVerificationFlow({ flow: flow.id, updateVerificationFlowBody: body })
       fetchFlow(flow.id)
     } catch (err: unknown) {
-      const status = (err as { response?: { status?: number } })?.response?.status
-      if (status === 400 || status === 422) fetchFlow(flow.id)
-      else if (status === 410) window.location.href = initFlowUrl('verification')
-      else setNetworkError('Could not send verification. Try again.')
+      applyNav(resolveKratosError(err, errorNavOptions('verification', flowContext(flow), 'Could not send verification. Try again.')), {
+        setFlow: () => fetchFlow(flow.id),
+        refetch: () => fetchFlow(flow.id),
+        setError: setNetworkError,
+      })
     } finally {
       setSubmitting(false)
     }
+  }
+
+  const submitRequest = (e: React.FormEvent) => {
+    e.preventDefault()
+    void sendRequest()
   }
 
   const submitCode = async (e: React.FormEvent) => {
@@ -109,17 +115,15 @@ function VerificationPageContent() {
         flow: flow.id,
         updateVerificationFlowBody: { method: 'code', code, csrf_token: getCsrfToken(flow) } as UpdateVerificationFlowBody,
       })
-      if (handleContinueWith(data)) return
+      if (handleContinueWith(data, flow.return_to)) return
       fetchFlow(flow.id)
     } catch (err: unknown) {
-      const r = (err as { response?: { status?: number; data?: { redirect_browser_to?: string } } })?.response
-      const status = r?.status
       // 422 browser_location_change_required = verification done, follow Kratos.
-      const redirect = r?.data?.redirect_browser_to
-      if (status === 422 && redirect) { window.location.href = redirect; return }
-      if (status === 400 || status === 422) fetchFlow(flow.id)
-      else if (status === 410) window.location.href = initFlowUrl('verification')
-      else setNetworkError('Code rejected. Try again.')
+      applyNav(resolveKratosError(err, errorNavOptions('verification', flowContext(flow), 'Code rejected. Try again.')), {
+        setFlow: () => fetchFlow(flow.id),
+        refetch: () => fetchFlow(flow.id),
+        setError: setNetworkError,
+      })
     } finally {
       setSubmitting(false)
     }
@@ -130,6 +134,7 @@ function VerificationPageContent() {
   return (
     <VerificationView
       flow={flow}
+      continueUrl={landingUrl(flow.return_to, window.location.origin)}
       stage={stage}
       banners={banners}
       networkError={networkError}
@@ -141,7 +146,7 @@ function VerificationPageContent() {
       onSubmitRequest={submitRequest}
       onSubmitCode={submitCode}
       onChangeEmail={() => { setCode(''); setStage('request') }}
-      onResend={() => submitRequest({ preventDefault: () => {} } as React.FormEvent)}
+      onResend={sendRequest}
     />
   )
 }
