@@ -225,13 +225,16 @@ export function RegisterView(p: {
           <button
             type="button"
             className={codeOnly ? 'btn btn-primary btn-block' : 'method-btn'}
-            disabled={p.submitting}
+            disabled={p.submitting || !!p.botCheckPending}
             onClick={() => { rememberMethod('code'); void p.onSendCode?.() }}
           >
             {codeOnly
               ? (p.submitting ? <><span className="spinner" aria-hidden /> Sending…</> : 'Email me a code')
               : <MethodContent icon={<Icons.Mail size={18} />} title="Email me a code instead" hint="Confirm the address with a 6-digit code — nothing to remember" />}
           </button>
+          {/* Emailing the code is checked by the gateway: the widget sits in the form above, or here. */}
+          {codeOnly && p.botCheck && <div className="mt-4">{p.botCheck}</div>}
+          {codeOnly && p.botCheckPending && <p className="small muted text-center" style={{ margin: 'var(--space-2) 0 0' }}>Complete the bot check to get your code.</p>}
         </>
       )}
 
@@ -273,7 +276,7 @@ export function SignUpClosedView({ message, signInHref }: { message: string; sig
 
 /**
  * The code was sent: type it to create the account. This submit is the one Kratos hands to jinbe's
- * hook, so the bot check sits here — not on sending, which creates nothing.
+ * hook, so the bot check sits here too (sending was checked by the gateway, and so is a resend).
  */
 function RegisterCodeStep(p: Parameters<typeof RegisterView>[0] & { email: string; restart: string }) {
   const code = p.code ?? ''
@@ -318,7 +321,10 @@ function RegisterCodeStep(p: Parameters<typeof RegisterView>[0] & { email: strin
       </form>
       {p.onResendCode && (
         <div className="mt-4">
-          <ResendCode onResend={p.onResendCode} cooldownKey={`reg-code:${p.flow.id}`} />
+          {/* A resend is another email: it waits for the bot check like the first one. */}
+          {p.botCheckPending
+            ? <p className="small muted" style={{ margin: 0 }}>Complete the bot check above to send another code.</p>
+            : <ResendCode onResend={p.onResendCode} cooldownKey={`reg-code:${p.flow.id}`} />}
         </div>
       )}
     </FlowCard>

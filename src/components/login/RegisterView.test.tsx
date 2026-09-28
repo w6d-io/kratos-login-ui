@@ -15,12 +15,16 @@ const props = (over: Record<string, unknown> = {}) => ({
 })
 
 describe('RegisterView · email-code sign-up', () => {
-  it('credential step with only a code on offer: one button sends it, no bot check yet (sending creates nothing)', () => {
+  it('credential step with only a code on offer: one button sends it, once the bot check produced a token (the gateway checks the email)', () => {
     const onSendCode = vi.fn()
-    render(<RegisterView {...props({ codeStage: 'send', onSendCode, botCheck: <div data-testid="widget" /> })} />)
+    const view = (over: Record<string, unknown>) => <RegisterView {...props({ codeStage: 'send', onSendCode, botCheck: <div data-testid="widget" />, ...over })} />
+    const { rerender } = render(view({ botCheckPending: true }))
     expect(screen.getByRole('heading', { name: /choose how you’ll sign in/i })).toBeTruthy()
-    expect(screen.queryByTestId('widget')).toBeNull()
+    expect(screen.getByTestId('widget')).toBeTruthy()
     expect(screen.queryByRole('button', { name: /^continue$/i })).toBeNull()
+    expect((screen.getByRole('button', { name: /email me a code/i }) as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.getByText(/complete the bot check to get your code/i)).toBeTruthy()
+    rerender(view({ botCheckPending: false }))
     fireEvent.click(screen.getByRole('button', { name: /email me a code/i }))
     expect(onSendCode).toHaveBeenCalled()
   })
@@ -45,7 +49,10 @@ describe('RegisterView · email-code sign-up', () => {
     expect(screen.getByText(/tick the box/i)).toBeTruthy()
     rerender(view({ accepted: true, botCheckPending: true }))
     expect(submit().disabled).toBe(true)
-    expect(screen.getByText(/complete the bot check/i)).toBeTruthy()
+    expect(screen.getByText(/complete the bot check above to continue/i)).toBeTruthy()
+    // A resend is another email: it waits for the token too.
+    expect(screen.queryByRole('button', { name: /resend code/i })).toBeNull()
+    expect(screen.getByText(/to send another code/i)).toBeTruthy()
     rerender(view({ accepted: true, botCheckPending: false, code: '123' }))
     expect(submit().disabled).toBe(true)
     rerender(view({ accepted: true, botCheckPending: false }))
