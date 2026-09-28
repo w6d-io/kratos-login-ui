@@ -35,6 +35,8 @@ interface Base {
 interface BotCheckSlot {
   botCheck?: ReactNode
   botCheckPending?: boolean
+  /** The token itself, for the passkey form Ory's script submits natively (no header possible). */
+  botCheckToken?: string | null
 }
 
 function BotCheckBlock({ slot, id }: { slot: BotCheckSlot; id: string }) {
@@ -107,7 +109,8 @@ export function PasswordView(p: Base & BotCheckSlot & {
   const quickMethods = quick && (
     <div className="method-list">
       {hasPasskey && (
-        <WebAuthnTriggerForm flow={flow} group="passkey" triggerName="passkey_login_trigger" className="method-btn" onTrigger={() => rememberMethod('passkey')}>
+        <WebAuthnTriggerForm flow={flow} group="passkey" triggerName="passkey_login_trigger" className="method-btn" onTrigger={() => rememberMethod('passkey')}
+          disabled={!!p.botCheckPending} captchaToken={p.botCheckToken}>
           <MethodContent
             icon={<Icons.Fingerprint size={18} />}
             title="Sign in with a passkey"

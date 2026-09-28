@@ -421,6 +421,7 @@ function LoginPageContent() {
       onSubmitOidc={onSubmitOidc}
       botCheck={bot.widget}
       botCheckPending={bot.pending}
+      botCheckToken={bot.token}
       signUpOpen={protection?.registration.mode !== 'closed'}
     />
   )

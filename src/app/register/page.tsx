@@ -297,6 +297,7 @@ function RegisterPageContent() {
       // credential (password or "email me a code"), and the code step (resend, then create).
       botCheck={bot.widget}
       botCheckPending={bot.pending}
+      botCheckToken={bot.token}
       codeStage={codeStage}
       code={code}
       setCode={setCode}
