@@ -83,6 +83,8 @@ export function RegisterView(p: {
   botCheck?: ReactNode
   /** The check is shown and not solved yet: the submit waits for it. */
   botCheckPending?: boolean
+  /** The token itself, for the passkey form Ory's script submits natively (no header possible). */
+  botCheckToken?: string | null
   /** "Sign-ups are limited to @corp.io addresses." — said under the email field before anyone types. */
   signUpLimit?: string | null
   /** Email-code sign-up (Kratos `code` method): offered (`send`), or a code was sent (`enter`). */
@@ -134,6 +136,7 @@ export function RegisterView(p: {
                 key={o.provider}
                 type="button"
                 className="method-btn"
+                disabled={!!p.botCheckPending}
                 onClick={() => { rememberMethod(`oidc:${o.provider.toLowerCase()}`); p.onSubmitOidc(o.provider) }}
               >
                 <MethodContent icon={<ProviderLogo name={o.provider} size={18} />} title={`Sign up with ${providerLabel(o.provider)}`} />
@@ -250,6 +253,8 @@ export function RegisterView(p: {
             triggerName="passkey_register_trigger"
             className="method-btn"
             onTrigger={() => rememberMethod('passkey')}
+            disabled={!!p.botCheckPending}
+            captchaToken={p.botCheckToken}
             extra={Object.fromEntries(Object.entries(p.traits).filter(([k, v]) => k.startsWith('traits.') && v))}
           >
             <MethodContent icon={<Icons.Fingerprint size={18} />} title="Sign up with a passkey" hint="Use Face ID, Touch ID or Windows Hello — nothing to remember" />

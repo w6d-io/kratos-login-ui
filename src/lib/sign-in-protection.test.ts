@@ -6,6 +6,8 @@ import {
   gateRefusal,
   isProtectedTrait,
   isBotCheckRefusal,
+  isTokenRefusal,
+  isEmailChange,
   parseSignInProtection,
   signUpLimitText,
   UNKNOWN_PROTECTION,
@@ -164,5 +166,32 @@ describe('protected traits', () => {
     expect(isProtectedTrait('traits.person_uuid_hint', DEFAULT_PROTECTED_TRAITS)).toBe(false)
     expect(isProtectedTrait('person_uuid', DEFAULT_PROTECTED_TRAITS)).toBe(false)
     expect(isProtectedTrait('traits.email', DEFAULT_PROTECTED_TRAITS)).toBe(false)
+  })
+})
+
+describe('isTokenRefusal', () => {
+  const err = (status: number, data: unknown) => ({ response: { status, data } })
+  it('is the gateway refusing the token, or the hook refusing it in the flow', () => {
+    expect(isTokenRefusal(err(403, { error: { id: 'captcha_missing', code: 403 } }))).toBe(true)
+    expect(isTokenRefusal(err(403, { error: { id: 'captcha_invalid', code: 403 } }))).toBe(true)
+    expect(isTokenRefusal(err(403, { error: { id: 'captcha_unavailable', code: 403 } }))).toBe(true)
+    expect(isTokenRefusal(err(400, { ui: { messages: [{ id: 4000902 }] } }))).toBe(true)
+  })
+  it('keeps the token for anything else', () => {
+    expect(isTokenRefusal(err(429, { error: { id: 'rate_limited', code: 429 } }))).toBe(false)
+    expect(isTokenRefusal(err(403, { error: { id: 'registration_closed', code: 403 } }))).toBe(false)
+    expect(isTokenRefusal(err(400, { ui: { messages: [{ id: 4000006 }] } }))).toBe(false)
+    expect(isTokenRefusal(new Error('network'))).toBe(false)
+    expect(isTokenRefusal(null)).toBe(false)
+  })
+})
+
+describe('isEmailChange', () => {
+  it('is a new, non-empty address (case and spaces do not count)', () => {
+    expect(isEmailChange('ann@corp.io', 'bob@corp.io')).toBe(true)
+    expect(isEmailChange('', 'bob@corp.io')).toBe(true)
+    expect(isEmailChange('ann@corp.io', ' Ann@Corp.io ')).toBe(false)
+    expect(isEmailChange('ann@corp.io', '')).toBe(false)
+    expect(isEmailChange('ann@corp.io', undefined)).toBe(false)
   })
 })

@@ -17,7 +17,7 @@ import { extractFlowBanners } from '@/lib/flow-messages'
 import { RecoveryView } from '@/components/login/EmailCodeViews'
 import { flowContext, resolveKratosError } from '@/lib/flow-nav'
 import { useBotCheck, useSignInProtection } from '@/components/ui/BotCheck'
-import { captchaHeaders } from '@/lib/sign-in-protection'
+import { captchaHeaders, isTokenRefusal } from '@/lib/sign-in-protection'
 import { applyNav, errorNavOptions, rememberFlowOrigin } from '@/lib/flow-nav-browser'
 
 type Stage = 'request' | 'verify'
@@ -36,7 +36,7 @@ function RecoveryPageContent() {
   const urlReturnTo = searchParams.get('return_to') || ''
   const fetchingRef = useRef(false)
   const protection = useSignInProtection()
-  const bot = useBotCheck('recovery', protection)
+  const bot = useBotCheck('recovery', protection, { flowId: flow?.id, address: email })
 
   const fetchFlow = useCallback((id: string) => {
     if (fetchingRef.current) return
@@ -86,7 +86,7 @@ function RecoveryPageContent() {
   const banners = useMemo(() => extractFlowBanners(flow), [flow])
 
   /** Send (or re-send) the email on this flow; also the view's resend action. */
-  const sendRequest = async () => {
+  const sendRequest = async (resend = false) => {
     if (!flow) return
     setSubmitting(true)
     setNetworkError(null)
@@ -95,11 +95,13 @@ function RecoveryPageContent() {
       const body = (method === 'code'
         ? { method: 'code', email, csrf_token: getCsrfToken(flow) }
         : { method: 'link', email, csrf_token: getCsrfToken(flow) }) as UpdateRecoveryFlowBody
-      // No Kratos hook runs when the email is sent: the gateway checks this token (X-Captcha-Token)
-      // with the provider before Kratos acts. One token per email, so a fresh one is asked after.
-      await createBrowserClient().updateRecoveryFlow({ flow: flow.id, updateRecoveryFlowBody: body }, captchaHeaders(bot.take()))
+      // No Kratos hook runs when the email is sent: the gateway checks the flow's token
+      // (X-Captcha-Token) before Kratos acts. Its pass covers one email: a resend needs a new token.
+      const token = resend ? await bot.fresh() : bot.use(email)
+      await createBrowserClient().updateRecoveryFlow({ flow: flow.id, updateRecoveryFlowBody: body }, captchaHeaders(token))
       fetchFlow(flow.id)
     } catch (err: unknown) {
+      if (isTokenRefusal(err)) bot.reset()
       applyNav(resolveKratosError(err, errorNavOptions('recovery', flowContext(flow), 'Could not send recovery. Try again.')), {
         setFlow: () => fetchFlow(flow.id),
         refetch: () => fetchFlow(flow.id),
@@ -124,13 +126,14 @@ function RecoveryPageContent() {
       const { data } = await createBrowserClient().updateRecoveryFlow({
         flow: flow.id,
         updateRecoveryFlowBody: { method: 'code', code, csrf_token: getCsrfToken(flow) } as UpdateRecoveryFlowBody,
-      })
+      }, captchaHeaders(bot.use()))
       if (handleContinueWith(data, flow.return_to)) return
       window.location.href = '/settings'
     } catch (err: unknown) {
       // Successful recovery answers 422 browser_location_change_required with
       // the privileged settings-flow URL — flow-nav follows it, or the user is
       // stuck re-submitting a code Kratos has already consumed.
+      if (isTokenRefusal(err)) bot.reset()
       applyNav(resolveKratosError(err, errorNavOptions('recovery', flowContext(flow), 'Code rejected. Try again.')), {
         setFlow: () => fetchFlow(flow.id),
         refetch: () => fetchFlow(flow.id),
@@ -156,8 +159,9 @@ function RecoveryPageContent() {
       setCode={setCode}
       onSubmitRequest={submitRequest}
       onSubmitCode={submitCode}
-      onChangeEmail={() => { setCode(''); setStage('request') }}
-      onResend={sendRequest}
+      // Another address, or the same one again: another email, so another token.
+      onChangeEmail={() => { setCode(''); setStage('request'); bot.reset() }}
+      onResend={() => sendRequest(true)}
       botCheck={bot.widget}
       botCheckPending={bot.pending}
     />

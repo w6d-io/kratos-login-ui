@@ -17,7 +17,7 @@ import { extractFlowBanners } from '@/lib/flow-messages'
 import { VerificationView } from '@/components/login/EmailCodeViews'
 import { flowContext, landingUrl, resolveKratosError } from '@/lib/flow-nav'
 import { useBotCheck, useSignInProtection } from '@/components/ui/BotCheck'
-import { captchaHeaders } from '@/lib/sign-in-protection'
+import { captchaHeaders, isTokenRefusal } from '@/lib/sign-in-protection'
 import { applyNav, errorNavOptions, rememberFlowOrigin } from '@/lib/flow-nav-browser'
 
 type Stage = 'request' | 'verify' | 'success'
@@ -36,7 +36,7 @@ function VerificationPageContent() {
   const urlReturnTo = searchParams.get('return_to') || ''
   const fetchingRef = useRef(false)
   const protection = useSignInProtection()
-  const bot = useBotCheck('verification', protection)
+  const bot = useBotCheck('verification', protection, { flowId: flow?.id, address: email })
 
   const fetchFlow = useCallback((id: string) => {
     if (fetchingRef.current) return
@@ -84,18 +84,20 @@ function VerificationPageContent() {
   const banners = useMemo(() => extractFlowBanners(flow), [flow])
 
   /** Send (or re-send) the email on this flow; also the view's resend action. */
-  const sendRequest = async () => {
+  const sendRequest = async (resend = false) => {
     if (!flow) return
     setSubmitting(true)
     setNetworkError(null)
     try {
       const method = hasGroup(flow, 'code') ? 'code' : 'link'
       const body = { method, email, csrf_token: getCsrfToken(flow) } as UpdateVerificationFlowBody
-      // No Kratos hook runs when the email is sent: the gateway checks this token (X-Captcha-Token)
-      // with the provider before Kratos acts. One token per email, so a fresh one is asked after.
-      await createBrowserClient().updateVerificationFlow({ flow: flow.id, updateVerificationFlowBody: body }, captchaHeaders(bot.take()))
+      // No Kratos hook runs when the email is sent: the gateway checks the flow's token
+      // (X-Captcha-Token) before Kratos acts. Its pass covers one email: a resend needs a new token.
+      const token = resend ? await bot.fresh() : bot.use(email)
+      await createBrowserClient().updateVerificationFlow({ flow: flow.id, updateVerificationFlowBody: body }, captchaHeaders(token))
       fetchFlow(flow.id)
     } catch (err: unknown) {
+      if (isTokenRefusal(err)) bot.reset()
       applyNav(resolveKratosError(err, errorNavOptions('verification', flowContext(flow), 'Could not send verification. Try again.')), {
         setFlow: () => fetchFlow(flow.id),
         refetch: () => fetchFlow(flow.id),
@@ -120,11 +122,12 @@ function VerificationPageContent() {
       const { data } = await createBrowserClient().updateVerificationFlow({
         flow: flow.id,
         updateVerificationFlowBody: { method: 'code', code, csrf_token: getCsrfToken(flow) } as UpdateVerificationFlowBody,
-      })
+      }, captchaHeaders(bot.use()))
       if (handleContinueWith(data, flow.return_to)) return
       fetchFlow(flow.id)
     } catch (err: unknown) {
       // 422 browser_location_change_required = verification done, follow Kratos.
+      if (isTokenRefusal(err)) bot.reset()
       applyNav(resolveKratosError(err, errorNavOptions('verification', flowContext(flow), 'Code rejected. Try again.')), {
         setFlow: () => fetchFlow(flow.id),
         refetch: () => fetchFlow(flow.id),
@@ -151,8 +154,9 @@ function VerificationPageContent() {
       setCode={setCode}
       onSubmitRequest={submitRequest}
       onSubmitCode={submitCode}
-      onChangeEmail={() => { setCode(''); setStage('request') }}
-      onResend={sendRequest}
+      // Another address, or the same one again: another email, so another token.
+      onChangeEmail={() => { setCode(''); setStage('request'); bot.reset() }}
+      onResend={() => sendRequest(true)}
       botCheck={bot.widget}
       botCheckPending={bot.pending}
     />

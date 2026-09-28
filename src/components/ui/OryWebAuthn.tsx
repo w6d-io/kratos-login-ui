@@ -73,6 +73,7 @@ export function WebAuthnTriggerForm({
   disabled,
   extra,
   onTrigger,
+  captchaToken,
   children,
 }: {
   flow: AnyFlow
@@ -87,6 +88,11 @@ export function WebAuthnTriggerForm({
   extra?: Record<string, string>
   /** Called when the person starts the ceremony (e.g. to remember the method). */
   onTrigger?: () => void
+  /**
+   * The bot-check token: Ory's script submits this form natively, which cannot carry the
+   * X-Captcha-Token header, so the gateway reads it from this body field instead.
+   */
+  captchaToken?: string | null
   children?: React.ReactNode
 }) {
   const ready = useOryWebAuthn(flow)
@@ -114,6 +120,7 @@ export function WebAuthnTriggerForm({
       {Object.entries(overrides).map(([name, value]) => (
         <input key={name} type="hidden" name={name} value={value} readOnly />
       ))}
+      {captchaToken && <input type="hidden" name="transient_payload.captcha_token" value={captchaToken} readOnly />}
       {/* name/value on the button matter: webauthn triggers carry the
           ceremony options in `value`, and Ory's script locates the form via
           the trigger element. type=button — the script submits the form

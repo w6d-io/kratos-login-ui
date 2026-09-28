@@ -22,7 +22,7 @@ import { flowContext, resolveKratosError } from '@/lib/flow-nav'
 import { applyNav, errorNavOptions, rememberFlowDestination, rememberFlowOrigin } from '@/lib/flow-nav-browser'
 import { signInUrl } from '@/lib/access'
 import { useBotCheck, useSignInProtection } from '@/components/ui/BotCheck'
-import { captchaHeaders, DEFAULT_PROTECTED_TRAITS, isProtectedTrait, signUpLimitText } from '@/lib/sign-in-protection'
+import { captchaHeaders, isTokenRefusal, DEFAULT_PROTECTED_TRAITS, isProtectedTrait, signUpLimitText } from '@/lib/sign-in-protection'
 import { offeredSignUpMethods, parseSignUpMethods, type SignUpMethod } from '@/lib/sign-up-methods'
 
 function RegisterPageContent() {
@@ -40,7 +40,8 @@ function RegisterPageContent() {
   const returnTo = searchParams.get('return_to') || ''
   const fetchingRef = useRef(false)
   const protection = useSignInProtection()
-  const bot = useBotCheck('registration', protection)
+  const email = traits['traits.email'] ?? ''
+  const bot = useBotCheck('registration', protection, { flowId: flow?.id, address: email })
   // Traits only an administrator sets (the gateway forwards them to apps): never asked, never sent.
   const protectedTraits = protection?.protectedTraits ?? DEFAULT_PROTECTED_TRAITS
   // What the identity schema lets Kratos offer — the details step says what comes next.
@@ -144,6 +145,7 @@ function RegisterPageContent() {
       if (handleContinueWith(data, flow.return_to || returnTo)) return
       fetchFlow(flow.id)
     } catch (err: unknown) {
+      if (isTokenRefusal(err)) bot.reset()
       applyNav(resolveKratosError(err, errorNavOptions('registration', flowContext(flow), failMessage)), {
         setFlow: () => fetchFlow(flow.id),
         refetch: () => fetchFlow(flow.id),
@@ -154,10 +156,10 @@ function RegisterPageContent() {
     }
   }
 
-  // Sending and resending the code create nothing, so no Kratos hook runs: the gateway checks the
-  // token (X-Captcha-Token) before Kratos emails the code. One token per email.
-  const onSendCode = () => submitCode({}, 'Could not send the code. Try again.', bot.take())
-  const onResendCode = () => submitCode({ resend: 'code' }, 'Could not send a new code. Try again.', bot.take())
+  // Sending the code creates nothing, so no Kratos hook runs: the gateway checks the flow's token
+  // (X-Captcha-Token) before Kratos emails it. Its pass covers one email: a resend needs a new token.
+  const onSendCode = () => submitCode({}, 'Could not send the code. Try again.', bot.use(email))
+  const onResendCode = async () => submitCode({ resend: 'code' }, 'Could not send a new code. Try again.', await bot.fresh())
 
   // After the details step: when the next one only offers an email code, send it straight away
   // rather than show a one-button "choice". Otherwise (or on any doubt) show the step as it is.
@@ -177,7 +179,7 @@ function RegisterPageContent() {
   // Typing the code creates the account: Kratos hands this submit to jinbe's hook, which checks the token.
   const onSubmitCode = async (e: React.FormEvent) => {
     e.preventDefault()
-    const token = bot.take()
+    const token = bot.use(email)
     try {
       await submitCode({ code, ...(token ? { transient_payload: { captcha_token: token } } : {}) }, 'Code rejected. Please try again.', token)
     } finally {
@@ -200,9 +202,9 @@ function RegisterPageContent() {
       // to the next step (which adds password inputs to the flow).
       // The bot-check token rides in transient_payload: Kratos hands it to jinbe's interrupting
       // hook before the account is stored, and never persists it.
-      // The details step (profile) sends nothing and keeps the token for the next submit — in
-      // code-only sign-up that is the one that emails the code, right after this one.
-      const token = hasPassword ? bot.take() : null
+      // The same token goes with the details step and every step after it (the gateway checks each
+      // submit of the flow); in code-only sign-up the next one emails the code.
+      const token = bot.use(email)
       const body = (hasPassword
         ? { method: 'password', password, traits: traitsObj, csrf_token: getCsrfToken(flow), ...(token ? { transient_payload: { captcha_token: token } } : {}) }
         : { method: 'profile', traits: traitsObj, csrf_token: getCsrfToken(flow) }
@@ -216,6 +218,7 @@ function RegisterPageContent() {
       // 422 browser_location_change_required = registration succeeded and
       // Kratos wants the browser elsewhere (e.g. verification) — follow it.
       // The details step "fails" into the next one: Kratos answers it with a 400 and the flow.
+      if (isTokenRefusal(err)) bot.reset()
       applyNav(resolveKratosError(err, errorNavOptions('registration', flowContext(flow), 'Sign-up failed. Please try again.')), {
         setFlow: () => (hasPassword ? fetchFlow(flow.id) : void afterDetails(flow.id)),
         refetch: () => fetchFlow(flow.id),
@@ -228,6 +231,21 @@ function RegisterPageContent() {
 
   const onSubmitOidc = (provider: string) => {
     if (!flow) return
+    // A checked flow needs the token in a header, which a form POST cannot carry: submit it as JSON,
+    // and Kratos answers 422 browser_location_change_required to the provider (flow-nav follows it).
+    const token = bot.use()
+    if (token) {
+      const body = { method: 'oidc', provider, csrf_token: getCsrfToken(flow), transient_payload: { captcha_token: token } } as unknown as UpdateRegistrationFlowBody
+      createBrowserClient().updateRegistrationFlow({ flow: flow.id, updateRegistrationFlowBody: body }, captchaHeaders(token)).catch((err: unknown) => {
+        if (isTokenRefusal(err)) bot.reset()
+        applyNav(resolveKratosError(err, errorNavOptions('registration', flowContext(flow), 'Could not start the sign-up. Please try again.')), {
+          setFlow: () => fetchFlow(flow.id),
+          refetch: () => fetchFlow(flow.id),
+          setError: setNetworkError,
+        })
+      })
+      return
+    }
     const form = document.createElement('form')
     form.method = 'POST'
     form.action = flow.ui.action
@@ -279,6 +297,7 @@ function RegisterPageContent() {
       // credential (password or "email me a code"), and the code step (resend, then create).
       botCheck={bot.widget}
       botCheckPending={bot.pending}
+      botCheckToken={bot.token}
       codeStage={codeStage}
       code={code}
       setCode={setCode}
