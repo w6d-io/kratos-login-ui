@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { lastSiteChoice, originHosts, rememberOriginHost, rememberSiteChoice, resolveWelcome, type WelcomeDeps } from './landing'
+import { forgetDestination, lastSiteChoice, originHosts, recallDestination, rememberDestination, rememberOriginHost, rememberSiteChoice, resolveWelcome, type WelcomeDeps } from './landing'
 import { fetchMySites, kratosSessionCookies, sanitizeSite, type MySite } from './sites-server'
 
 const allowed = (url: string) => /^https:\/\/[a-z0-9-]+\.example\.com(\/|$)/.test(url)
@@ -12,6 +12,7 @@ function memStore() {
 
 function deps(over: Partial<WelcomeDeps> = {}): WelcomeDeps {
   return {
+    rememberedDestination: () => null,
     originHosts: [],
     landingFor: async () => null,
     mySites: async () => ({ kind: 'sites', sites: [site('a'), site('b')] }),
@@ -23,6 +24,18 @@ function deps(over: Partial<WelcomeDeps> = {}): WelcomeDeps {
 }
 
 describe('resolveWelcome', () => {
+  it('lands on the page this sign-in started for before any site landing or picker', async () => {
+    const landingFor = vi.fn(async () => 'https://pay.example.com/home')
+    const mySites = vi.fn(async () => ({ kind: 'sites' as const, sites: [site('a'), site('b')] }))
+    const o = await resolveWelcome(deps({ rememberedDestination: () => 'https://a.example.com/private?x=1', originHosts: ['pay.example.com'], landingFor, mySites }))
+    expect(o).toEqual({ kind: 'redirect', to: 'https://a.example.com/private?x=1' })
+    expect(landingFor).not.toHaveBeenCalled()
+    expect(mySites).not.toHaveBeenCalled()
+  })
+  it('remembered page but the loop guard tripped (it keeps refusing) → the usual landing', async () => {
+    const o = await resolveWelcome(deps({ rememberedDestination: () => 'https://a.example.com/private', mayAutoRedirect: (u) => u !== 'https://a.example.com/private' }))
+    expect(o.kind).toBe('choose')
+  })
   it('goes to the originating site\'s defaultReturnUrl first', async () => {
     const landingFor = vi.fn(async (h: string) => (h === 'pay.example.com' ? 'https://pay.example.com/home' : null))
     const o = await resolveWelcome(deps({ originHosts: ['nope.example.com', 'pay.example.com'], landingFor }))
@@ -49,6 +62,27 @@ describe('resolveWelcome', () => {
       kind: 'signin',
       to: `/login?return_to=${encodeURIComponent('https://auth.example.com/welcome')}`,
     })
+  })
+})
+
+describe('remembered destination', () => {
+  it('recalls within 30 minutes, forgets after, on forget, and survives blocked storage', () => {
+    const s = memStore()
+    let t = 1_000_000
+    rememberDestination('https://a.example.com/private?x=1', s, () => t)
+    t += 29 * 60_000
+    expect(recallDestination(s, () => t)).toBe('https://a.example.com/private?x=1')
+    t += 2 * 60_000
+    expect(recallDestination(s, () => t)).toBeNull()
+    rememberDestination('https://a.example.com/p', s, () => t)
+    forgetDestination(s)
+    expect(recallDestination(s, () => t)).toBeNull()
+    s.setItem('kratos:destination', '{"url":1}')
+    expect(recallDestination(s)).toBeNull()
+    const broken = { getItem: () => { throw new Error('blocked') }, setItem: () => { throw new Error('blocked') } }
+    expect(() => rememberDestination('https://a.example.com/', broken)).not.toThrow()
+    expect(() => forgetDestination(broken)).not.toThrow()
+    expect(recallDestination(broken)).toBeNull()
   })
 })
 

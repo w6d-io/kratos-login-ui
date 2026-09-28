@@ -17,7 +17,7 @@ import {
 import { extractFlowBanners } from '@/lib/flow-messages'
 import { RegisterView, SignUpClosedView } from '@/components/login/RegisterView'
 import { flowContext, resolveKratosError } from '@/lib/flow-nav'
-import { applyNav, errorNavOptions, rememberFlowOrigin } from '@/lib/flow-nav-browser'
+import { applyNav, errorNavOptions, rememberFlowDestination, rememberFlowOrigin } from '@/lib/flow-nav-browser'
 import { signInUrl } from '@/lib/access'
 import { useBotCheck, useSignInProtection } from '@/components/ui/BotCheck'
 import { signUpLimitText } from '@/lib/sign-in-protection'
@@ -45,6 +45,7 @@ function RegisterPageContent() {
       .getRegistrationFlow({ id })
       .then(({ data }) => {
         setFlow(data)
+        rememberFlowDestination(data.return_to)
         // Pre-fill traits from existing values (Kratos echoes them on validation errors).
         const tr: Record<string, string> = {}
         for (const f of getInputs(data, 'profile')) {
@@ -70,6 +71,7 @@ function RegisterPageContent() {
 
   useEffect(() => {
     rememberFlowOrigin()
+    rememberFlowDestination(returnTo)
     if (!flowId) {
       window.location.href = initFlowUrl('registration', returnTo)
       return

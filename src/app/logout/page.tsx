@@ -5,6 +5,8 @@ import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { createBrowserClient } from '@/lib/kratos'
 import { safeReturnTo } from '@/lib/flow-nav'
+import { sessionStore } from '@/lib/flow-nav-browser'
+import { forgetDestination } from '@/lib/landing'
 import { Loading } from '@/components/Loading'
 import { FlowCard } from '@/components/flow/FlowCard'
 import { Icons } from '@/components/ui/Icons'
@@ -30,6 +32,8 @@ function LogoutPageContent() {
   useEffect(() => {
     if (startedRef.current) return
     startedRef.current = true
+    // The next person in this tab starts fresh; a switch-account return_to carries its own destination.
+    forgetDestination(sessionStore())
     createBrowserClient()
       .createBrowserLogoutFlow({ returnTo })
       .then(({ data }) => {

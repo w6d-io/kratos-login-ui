@@ -1,7 +1,7 @@
 import { kratosBrowserBase } from './kratos'
 import { isReturnUrlAllowed } from './config'
-import { rememberOriginHost } from './landing'
-import { restartGuard, type ErrorNavOptions, type FlowContext, type FlowKind, type NavAction } from './flow-nav'
+import { rememberDestination, rememberOriginHost } from './landing'
+import { destinationUrl, restartGuard, WELCOME_PATH, type ErrorNavOptions, type FlowContext, type FlowKind, type NavAction } from './flow-nav'
 
 /** sessionStorage, or null when the browser blocks it (the getter itself can throw). */
 export function sessionStore(): Storage | null {
@@ -57,4 +57,12 @@ export function applyNav<F>(action: NavAction | null, h: NavHandlers<F>): boolea
 /** Remember the site this flow started from (for /welcome), from document.referrer. */
 export function rememberFlowOrigin(): void {
   rememberOriginHost(document.referrer, window.location.origin, kratosBrowserBase(), isReturnUrlAllowed, sessionStore())
+}
+
+/** Remember a flow's valid return_to for /welcome, in case a later hop of this sign-in loses it. */
+export function rememberFlowDestination(returnTo: string | null | undefined): void {
+  if (!returnTo) return
+  const origin = window.location.origin
+  const destination = destinationUrl(returnTo, origin)
+  if (destination !== `${origin}${WELCOME_PATH}`) rememberDestination(destination, sessionStore())
 }

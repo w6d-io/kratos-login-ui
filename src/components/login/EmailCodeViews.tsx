@@ -27,7 +27,11 @@ interface Shared {
   botCheckPending?: boolean
 }
 
-const backToSignIn = <Link href="/login" className="back"><Icons.ArrowLeft size={12} /> Back to sign in</Link>
+/** Back to sign-in, keeping the flow's destination (a bare /login would start a flow without it). */
+function BackToSignIn({ returnTo }: { returnTo?: string }) {
+  const href = returnTo ? `/login?return_to=${encodeURIComponent(returnTo)}` : '/login'
+  return <Link href={href} className="back"><Icons.ArrowLeft size={12} /> Back to sign in</Link>
+}
 
 function Busy({ busy, idle, working }: { busy: boolean; idle: string; working: string }) {
   return busy ? <><span className="spinner" aria-hidden /> {working}</> : <>{idle}</>
@@ -43,7 +47,7 @@ function EmailRequest({ p, flow, icon, title, subtitle, cta, idPrefix }: {
   idPrefix: string
 }) {
   return (
-    <FlowCard icon={icon} title={title} subtitle={subtitle} footer={backToSignIn}>
+    <FlowCard icon={icon} title={title} subtitle={subtitle} footer={<BackToSignIn returnTo={flow.return_to} />}>
       <FlowMessages banners={p.banners} networkError={p.networkError} />
       <form onSubmit={p.onSubmitRequest} noValidate>
         <Field label="Email" htmlFor={`${idPrefix}-email`} error={getInput(flow, 'email')?.errors?.[0]}>

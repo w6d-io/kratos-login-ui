@@ -18,7 +18,7 @@ import {
   secondFactorGroups,
   type FlowContext,
 } from '@/lib/flow-nav'
-import { applyNav, errorNavOptions, rememberFlowOrigin, sessionStore } from '@/lib/flow-nav-browser'
+import { applyNav, errorNavOptions, rememberFlowDestination, rememberFlowOrigin, sessionStore } from '@/lib/flow-nav-browser'
 import { signInUrl, switchAccountUrl } from '@/lib/access'
 import {
   getCsrfToken,
@@ -77,6 +77,7 @@ function LoginPageContent() {
 
   const showFlow = useCallback((data: LoginFlow) => {
     rememberFlowContext(data.id, flowContext(data), sessionStore())
+    rememberFlowDestination(data.return_to)
     // An aal2 flow for an identity with no second factor has nothing to ask
     // (zero method groups) — don't render an empty card, just go on.
     if (data.requested_aal === 'aal2' && !data.refresh && !hasGroup(data, 'password') && secondFactorGroups(data).length === 0) {
@@ -155,6 +156,7 @@ function LoginPageContent() {
 
   useEffect(() => {
     rememberFlowOrigin()
+    rememberFlowDestination(urlReturnTo)
     if (flowId) {
       fetchFlow(flowId)
       return
