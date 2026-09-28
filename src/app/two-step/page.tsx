@@ -10,13 +10,13 @@ import { getTriggerButton } from '@/lib/kratos-flow'
 import { destinationUrl, gateUrl } from '@/lib/flow-nav'
 import { sessionStore } from '@/lib/flow-nav-browser'
 import { switchAccountUrl } from '@/lib/access'
-import { resolveGate, stepUpGuard } from '@/lib/two-step'
+import { blindPassGuard, resolveGate, stepUpGuard } from '@/lib/two-step'
 import type { SecondFactorResult } from '@/lib/second-factor-server'
 import { useBranding, useBrandingReturnTo } from '@/components/ui/Branding'
 import { Icons } from '@/components/ui/Icons'
 import { WebAuthnTriggerForm } from '@/components/ui/OryWebAuthn'
 import { MfaTotpSection, onSettingsError } from '@/components/settings/TotpSection'
-import { TwoStepSetupView, TwoStepStuckView } from '@/components/TwoStepViews'
+import { TwoStepSetupView, TwoStepStuckView, TwoStepUncheckedView } from '@/components/TwoStepViews'
 
 /**
  * The two-step gate every finished sign-in passes (src/lib/two-step.ts):
@@ -34,7 +34,7 @@ function TwoStepPageContent() {
   const selfUrl = destination ? gateUrl(destination, origin) : ''
   useBrandingReturnTo(destination)
   const { branding } = useBranding()
-  const [view, setView] = useState<'loading' | 'enrol' | 'stuck'>('loading')
+  const [view, setView] = useState<'loading' | 'enrol' | 'stuck' | 'unchecked'>('loading')
   const [flow, setFlow] = useState<SettingsFlow | null>(null)
   const [error, setError] = useState<string | null>(null)
   const running = useRef(false)
@@ -67,11 +67,12 @@ function TwoStepPageContent() {
       stepUpUrl: (rt) => initFlowUrl('login', rt, { aal: 'aal2' }),
       selfUrl,
       mayStepUp: () => stepUpGuard(sessionStore()),
+      mayContinueUnchecked: () => blindPassGuard(destination, sessionStore()),
     }).then((o) => {
       running.current = false
       if (o.kind === 'continue' || o.kind === 'stepup' || o.kind === 'signin') window.location.assign(o.to)
       else if (o.kind === 'enrol') loadFlow()
-      else setView('stuck')
+      else setView(o.kind)
     })
   }, [destination, selfUrl, loadFlow])
 
@@ -80,6 +81,9 @@ function TwoStepPageContent() {
   if (!destination || view === 'loading') return <Loading />
   const signOutHref = switchAccountUrl(origin, destination)
   if (view === 'stuck') return <TwoStepStuckView onRetry={run} signOutHref={signOutHref} />
+  if (view === 'unchecked') {
+    return <TwoStepUncheckedView onRetry={run} settingsHref={`/settings?return_to=${encodeURIComponent(selfUrl)}#mfa`} signOutHref={signOutHref} />
+  }
 
   const email = (flow?.identity?.traits as { email?: unknown } | undefined)?.email
   return (

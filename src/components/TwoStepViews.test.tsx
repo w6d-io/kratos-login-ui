@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { TwoStepSetupView, TwoStepStuckView } from './TwoStepViews'
+import { TwoStepSetupView, TwoStepStuckView, TwoStepUncheckedView } from './TwoStepViews'
 
 afterEach(cleanup)
 
@@ -35,5 +35,18 @@ describe('TwoStepStuckView', () => {
     fireEvent.click(screen.getByRole('button', { name: /try again/i }))
     expect(onRetry).toHaveBeenCalled()
     expect(screen.getByRole('link', { name: /sign out/i }).getAttribute('href')).toBe('/logout')
+  })
+})
+
+describe('TwoStepUncheckedView', () => {
+  it('says it could not check, and offers retry, adding a factor anyway, and sign out — no "continue"', () => {
+    const onRetry = vi.fn()
+    render(<TwoStepUncheckedView onRetry={onRetry} settingsHref="/settings?return_to=x#mfa" signOutHref="/logout" />)
+    expect(screen.getByRole('heading').textContent).toBe('We couldn’t check your sign-in security')
+    fireEvent.click(screen.getByRole('button', { name: /try again/i }))
+    expect(onRetry).toHaveBeenCalled()
+    expect(screen.getByRole('link', { name: /second factor/i }).getAttribute('href')).toBe('/settings?return_to=x#mfa')
+    expect(screen.getByRole('link', { name: /sign out/i }).getAttribute('href')).toBe('/logout')
+    expect(screen.queryByText(/continue anyway|skip/i)).toBeNull()
   })
 })

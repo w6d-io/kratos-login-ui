@@ -43,8 +43,10 @@ function WelcomePageContent() {
         stepUpUrl: (rt) => initFlowUrl('login', rt, { aal: 'aal2' }),
         selfUrl: gateUrl(self, window.location.origin),
         mayStepUp: () => stepUpGuard(sessionStore()),
+        // The picker is this UI's own page, not a destination that refuses and sends people back.
+        mayContinueUnchecked: () => true,
       })
-      if (g.kind === 'enrol' || g.kind === 'stuck') { window.location.assign(gateUrl(self, window.location.origin)); return }
+      if (g.kind === 'enrol' || g.kind === 'stuck' || g.kind === 'unchecked') { window.location.assign(gateUrl(self, window.location.origin)); return }
       if (g.kind === 'stepup') { window.location.assign(g.to); return }
     }
     void resolveWelcome({

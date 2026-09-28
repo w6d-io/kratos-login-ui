@@ -65,3 +65,30 @@ export function TwoStepStuckView({ onRetry, signOutHref }: { onRetry: () => void
     </FlowCard>
   )
 }
+
+/**
+ * The sign-in site couldn't ask whether this account needs a second factor, and the destination
+ * already sent the person back once: continuing again would loop. Retry, add a factor anyway, or leave.
+ */
+export function TwoStepUncheckedView({ onRetry, settingsHref, signOutHref }: { onRetry: () => void; settingsHref: string; signOutHref: string }) {
+  return (
+    <FlowCard
+      icon={<Icons.Shield size={20} />}
+      tone="warn"
+      title="We couldn’t check your sign-in security"
+      subtitle="The service that says whether your account needs two-step sign-in didn’t answer, and the page you’re going to sent you back. If your role requires a second factor, setting one up now gets you through."
+    >
+      <div className="form-actions" style={{ marginTop: 0 }}>
+        <button type="button" className="btn btn-primary btn-block" onClick={onRetry}>
+          <Icons.RefreshCcw size={16} /> Try again
+        </button>
+        <a href={settingsHref} className="btn btn-secondary btn-block">
+          <Icons.Shield size={16} /> Add a second factor
+        </a>
+        <a href={signOutHref} className="btn btn-ghost btn-block">
+          <Icons.LogOut size={16} /> Sign out
+        </a>
+      </div>
+    </FlowCard>
+  )
+}

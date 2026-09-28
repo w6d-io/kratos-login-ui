@@ -1,17 +1,18 @@
 import { describe, it, expect, vi } from 'vitest'
-import { resolveGate, stepUpGuard, type GateDeps } from './two-step'
+import { blindPassGuard, resolveGate, stepUpGuard, type GateDeps } from './two-step'
 import { fetchSecondFactor, parseSecondFactor, type SecondFactorResult } from './second-factor-server'
 
 const DEST = 'https://kuma.test/users'
 const SELF = `https://auth.test/two-step?return_to=${encodeURIComponent(DEST)}`
 
-function deps(status: SecondFactorResult | Error, mayStepUp = true): GateDeps {
+function deps(status: SecondFactorResult | Error, mayStepUp = true, mayContinueUnchecked = true): GateDeps {
   return {
     status: async () => { if (status instanceof Error) throw status; return status },
     destination: DEST,
     stepUpUrl: (rt) => `https://kratos.test/self-service/login/browser?aal=aal2&return_to=${encodeURIComponent(rt)}`,
     selfUrl: SELF,
     mayStepUp: () => mayStepUp,
+    mayContinueUnchecked: () => mayContinueUnchecked,
   }
 }
 const st = (required: boolean, enrolled: boolean, aal: 'aal1' | 'aal2' = 'aal1'): SecondFactorResult =>
@@ -36,6 +37,12 @@ describe('resolveGate', () => {
     expect(await resolveGate(deps({ kind: 'unavailable' }))).toEqual({ kind: 'continue', to: DEST })
     expect(await resolveGate(deps(new Error('network')))).toEqual({ kind: 'continue', to: DEST })
   })
+  it('jinbe still unanswering on a second pass for the same destination → unchecked, never another loop', async () => {
+    expect(await resolveGate(deps({ kind: 'unavailable' }, true, false))).toEqual({ kind: 'unchecked' })
+    expect(await resolveGate(deps(new Error('network'), true, false))).toEqual({ kind: 'unchecked' })
+    // An answer always wins over the guard.
+    expect(await resolveGate(deps(st(false, false), true, false))).toEqual({ kind: 'continue', to: DEST })
+  })
   it('no session → sign in, landing on the destination (through the gate again)', async () => {
     const o = await resolveGate(deps({ kind: 'unauthenticated' }))
     expect(o).toEqual({ kind: 'signin', to: `/login?return_to=${encodeURIComponent(DEST)}` })
@@ -57,6 +64,21 @@ describe('stepUpGuard', () => {
     t += 61_000
     expect(stepUpGuard(s, now)).toBe(true)
     expect(stepUpGuard(null, now)).toBe(true)
+  })
+})
+
+describe('blindPassGuard', () => {
+  it('one unchecked pass per destination every five minutes', () => {
+    const m = new Map<string, string>()
+    const s = { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v) }
+    let t = 1_000_000
+    const now = () => t
+    expect(blindPassGuard(DEST, s, now)).toBe(true)
+    expect(blindPassGuard(DEST, s, now)).toBe(false)
+    expect(blindPassGuard('https://other.test/', s, now)).toBe(true)
+    t += 5 * 60_000 + 1
+    expect(blindPassGuard(DEST, s, now)).toBe(true)
+    expect(blindPassGuard(DEST, null, now)).toBe(true)
   })
 })
 
