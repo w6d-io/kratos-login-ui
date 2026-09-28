@@ -16,7 +16,8 @@ import {
 import { extractFlowBanners } from '@/lib/flow-messages'
 import { VerificationView } from '@/components/login/EmailCodeViews'
 import { flowContext, landingUrl, resolveKratosError } from '@/lib/flow-nav'
-import { setGatewayToken, useBotCheck, useSignInProtection } from '@/components/ui/BotCheck'
+import { useBotCheck, useSignInProtection } from '@/components/ui/BotCheck'
+import { captchaHeaders } from '@/lib/sign-in-protection'
 import { applyNav, errorNavOptions, rememberFlowOrigin } from '@/lib/flow-nav-browser'
 
 type Stage = 'request' | 'verify' | 'success'
@@ -90,9 +91,9 @@ function VerificationPageContent() {
     try {
       const method = hasGroup(flow, 'code') ? 'code' : 'link'
       const body = { method, email, csrf_token: getCsrfToken(flow) } as UpdateVerificationFlowBody
-      // No Kratos hook runs when the email is sent: the gateway checks this token (cookie) instead.
-      if (bot.widget) { setGatewayToken(bot.token); bot.reset() }
-      await createBrowserClient().updateVerificationFlow({ flow: flow.id, updateVerificationFlowBody: body })
+      // No Kratos hook runs when the email is sent: the gateway checks this token (X-Captcha-Token)
+      // with the provider before Kratos acts. One token per email, so a fresh one is asked after.
+      await createBrowserClient().updateVerificationFlow({ flow: flow.id, updateVerificationFlowBody: body }, captchaHeaders(bot.take()))
       fetchFlow(flow.id)
     } catch (err: unknown) {
       applyNav(resolveKratosError(err, errorNavOptions('verification', flowContext(flow), 'Could not send verification. Try again.')), {

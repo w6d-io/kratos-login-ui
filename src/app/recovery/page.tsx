@@ -16,7 +16,8 @@ import {
 import { extractFlowBanners } from '@/lib/flow-messages'
 import { RecoveryView } from '@/components/login/EmailCodeViews'
 import { flowContext, resolveKratosError } from '@/lib/flow-nav'
-import { setGatewayToken, useBotCheck, useSignInProtection } from '@/components/ui/BotCheck'
+import { useBotCheck, useSignInProtection } from '@/components/ui/BotCheck'
+import { captchaHeaders } from '@/lib/sign-in-protection'
 import { applyNav, errorNavOptions, rememberFlowOrigin } from '@/lib/flow-nav-browser'
 
 type Stage = 'request' | 'verify'
@@ -94,9 +95,9 @@ function RecoveryPageContent() {
       const body = (method === 'code'
         ? { method: 'code', email, csrf_token: getCsrfToken(flow) }
         : { method: 'link', email, csrf_token: getCsrfToken(flow) }) as UpdateRecoveryFlowBody
-      // No Kratos hook runs when the email is sent: the gateway checks this token (cookie) instead.
-      if (bot.widget) { setGatewayToken(bot.token); bot.reset() }
-      await createBrowserClient().updateRecoveryFlow({ flow: flow.id, updateRecoveryFlowBody: body })
+      // No Kratos hook runs when the email is sent: the gateway checks this token (X-Captcha-Token)
+      // with the provider before Kratos acts. One token per email, so a fresh one is asked after.
+      await createBrowserClient().updateRecoveryFlow({ flow: flow.id, updateRecoveryFlowBody: body }, captchaHeaders(bot.take()))
       fetchFlow(flow.id)
     } catch (err: unknown) {
       applyNav(resolveKratosError(err, errorNavOptions('recovery', flowContext(flow), 'Could not send recovery. Try again.')), {

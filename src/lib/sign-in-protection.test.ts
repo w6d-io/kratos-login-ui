@@ -2,7 +2,8 @@ import { describe, it, expect, vi } from 'vitest'
 import {
   botCheckFor,
   DEFAULT_PROTECTED_TRAITS,
-  gatewayTokenCookie,
+  captchaHeaders,
+  gateRefusal,
   isProtectedTrait,
   isBotCheckRefusal,
   parseSignInProtection,
@@ -65,10 +66,37 @@ describe('signUpLimitText', () => {
   })
 })
 
-describe('gateway token cookie', () => {
-  it('is scoped to the self-service paths, short-lived, strict, and cannot be injected into', () => {
-    expect(gatewayTokenCookie('0.abc-DEF_1.x', true)).toBe('stl_kcap=0.abc-DEF_1.x; Path=/self-service; Max-Age=600; SameSite=Strict; Secure')
-    expect(gatewayTokenCookie('a; Domain=evil.io', false)).toBe('stl_kcap=aDomainevil.io; Path=/self-service; Max-Age=600; SameSite=Strict')
+describe('captchaHeaders', () => {
+  it('puts the token in X-Captcha-Token, and nothing when there is no token', () => {
+    expect(captchaHeaders('0.abc-DEF_1.x')).toEqual({ headers: { 'X-Captcha-Token': '0.abc-DEF_1.x' } })
+    expect(captchaHeaders(null)).toBeUndefined()
+    expect(captchaHeaders('')).toBeUndefined()
+  })
+  it('cannot be used to inject a header', () => {
+    expect(captchaHeaders('a\r\nX-Evil: 1')).toEqual({ headers: { 'X-Captcha-Token': 'aX-Evil:1' } })
+    expect(captchaHeaders('\r\n')).toBeUndefined()
+  })
+})
+
+describe('gateRefusal', () => {
+  const body = (error: Record<string, unknown>) => ({ error })
+  it('reads the gateway bot-check refusals with their message', () => {
+    expect(gateRefusal(body({ id: 'captcha_missing', code: 403, message: 'Please complete the bot check, then try again.' }), 403))
+      .toEqual({ id: 'captcha_missing', message: 'Please complete the bot check, then try again.' })
+    expect(gateRefusal(body({ id: 'captcha_invalid', code: 403 }), 403)?.message).toMatch(/did not pass/)
+    expect(gateRefusal(body({ id: 'captcha_unavailable', message: '' }))?.message).toMatch(/unavailable/)
+  })
+  it('reads a rate limit with its wait', () => {
+    expect(gateRefusal(body({ id: 'rate_limited', code: 429, message: 'Too many codes. Wait 12 minutes.', retry_after: 700.2 }), 429))
+      .toEqual({ id: 'rate_limited', message: 'Too many codes. Wait 12 minutes.', retryAfter: 701 })
+    expect(gateRefusal(body({ id: 'rate_limited', retry_after: 'soon' }), 429)).toEqual({ id: 'rate_limited', message: expect.stringMatching(/Too many codes/) })
+  })
+  it('ignores Kratos errors and other statuses', () => {
+    expect(gateRefusal(body({ id: 'security_csrf_violation', code: 403 }), 403)).toBeNull()
+    expect(gateRefusal(body({ id: 'captcha_missing' }), 400)).toBeNull()
+    expect(gateRefusal({ ui: { messages: [] } }, 403)).toBeNull()
+    expect(gateRefusal(null, 403)).toBeNull()
+    expect(gateRefusal('nope', 429)).toBeNull()
   })
 })
 
