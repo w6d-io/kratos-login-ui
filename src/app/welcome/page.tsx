@@ -5,7 +5,10 @@ import { Loading } from '@/components/Loading'
 import { WelcomeView, type WelcomeViewProps } from '@/components/flow/WelcomeView'
 import { config } from '@/lib/config'
 import { returnGuard } from '@/lib/access'
-import { safeReturnTo } from '@/lib/flow-nav'
+import { gateUrl, safeReturnTo } from '@/lib/flow-nav'
+import { initFlowUrl } from '@/lib/ory'
+import { resolveGate, stepUpGuard } from '@/lib/two-step'
+import type { SecondFactorResult } from '@/lib/second-factor-server'
 import { sessionStore } from '@/lib/flow-nav-browser'
 import { lastSiteChoice, originHosts, rememberSiteChoice, resolveWelcome } from '@/lib/landing'
 import type { MySitesResult } from '@/lib/sites-server'
@@ -26,7 +29,24 @@ function localStore(): Storage | null {
 function WelcomePageContent() {
   const [state, setState] = useState<WelcomeViewProps['state'] | null>(null)
 
-  const run = useCallback(() => {
+  const run = useCallback(async () => {
+    // A picker is an exit too: an account that must have a second factor goes through the gate
+    // first, however it got here (typed URL, bookmark, back button).
+    if (config.secondFactorGate) {
+      const self = `${window.location.origin}/welcome`
+      const g = await resolveGate({
+        status: async () => {
+          const res = await fetch('/api/second-factor', { cache: 'no-store', credentials: 'same-origin' })
+          return res.ok ? ((await res.json()) as SecondFactorResult) : { kind: 'unavailable' }
+        },
+        destination: self,
+        stepUpUrl: (rt) => initFlowUrl('login', rt, { aal: 'aal2' }),
+        selfUrl: gateUrl(self, window.location.origin),
+        mayStepUp: () => stepUpGuard(sessionStore()),
+      })
+      if (g.kind === 'enrol' || g.kind === 'stuck') { window.location.assign(gateUrl(self, window.location.origin)); return }
+      if (g.kind === 'stepup') { window.location.assign(g.to); return }
+    }
     void resolveWelcome({
       originHosts: originHosts(window.location.host, sessionStore()),
       landingFor: async (host) => {
@@ -52,14 +72,14 @@ function WelcomePageContent() {
     })
   }, [])
 
-  useEffect(() => { run() }, [run])
+  useEffect(() => { void run() }, [run])
 
   if (!state) return <Loading />
   return (
     <WelcomeView
       state={state}
       onPick={(site) => rememberSiteChoice(site.name, localStore())}
-      onRetry={() => { setState(null); run() }}
+      onRetry={() => { setState(null); void run() }}
       consoleUrl={safeReturnTo(config.consoleUrl, window.location.origin)}
     />
   )

@@ -13,40 +13,15 @@ import {
   getInput,
   getPasskeyCredentials,
   hasGroup,
-  handleContinueWith,
 } from '@/lib/kratos-flow'
-import { flowContext, resolveKratosError, type FlowContext } from '@/lib/flow-nav'
-import { applyNav, errorNavOptions } from '@/lib/flow-nav-browser'
+import { flowContext } from '@/lib/flow-nav'
 import { extractFlowBanners } from '@/lib/flow-messages'
 import { FlowMessages } from '@/components/flow/FlowMessages'
 import { DangerSection, IdentityHeader, PasswordSection, ProfileSection, Section, SessionsSection, SettingsNav, type SettingsTab } from '@/components/settings/SettingsSections'
-import { BackupCodesRow, PasskeysRow, TotpRow } from '@/components/settings/MfaViews'
+import { BackupCodesRow, PasskeysRow } from '@/components/settings/MfaViews'
+import { MfaTotpSection, onSettingsError, onSettingsSaved } from '@/components/settings/TotpSection'
 
 type Tab = SettingsTab
-
-/**
- * Every settings error goes through flow-nav: privileged-session refresh and
- * aal2 step-up come back to this exact page (flow + tab), an expired session
- * signs in and returns here, an expired flow restarts with its return_to.
- */
-function onSettingsError(err: unknown, ctx: FlowContext, fallback: string, refetch: () => void, setError?: (m: string) => void) {
-  applyNav<SettingsFlow>(resolveKratosError(err, errorNavOptions('settings', ctx, fallback, window.location.href)), {
-    setFlow: refetch,
-    refetch,
-    setError: setError ?? refetch,
-  })
-}
-
-/**
- * A successful save: follow Kratos' continue_with (e.g. back to the site that
- * sent the user to enrol 2FA). An unverified address makes Kratos prepend
- * show_verification_ui to every save — only follow it for profile edits.
- */
-function onSettingsSaved(data: unknown, flow: SettingsFlow, method: string, refetch: () => void) {
-  const hash = typeof window !== 'undefined' ? window.location.hash : ''
-  if (handleContinueWith(data, flow.return_to, { skipVerification: method !== 'profile', currentSettingsFlowId: flow.id, hash })) return
-  refetch()
-}
 
 function SettingsPageContent() {
   const [flow, setFlow] = useState<SettingsFlow | null>(null)
@@ -300,64 +275,6 @@ function SettingsPageContent() {
         {tab === 'danger' && <DangerSection />}
       </div>
     </div>
-  )
-}
-
-function MfaTotpSection({ flow, onChanged }: { flow: SettingsFlow; onChanged: () => void }) {
-  const totpInput = getInput(flow, 'totp_code')
-  const totpUnlink = getInput(flow, 'totp_unlink')
-  const enrolled = !!totpUnlink
-  const [code, setCode] = useState('')
-  const [submitting, setSubmitting] = useState(false)
-
-  // QR + secret are exposed by Kratos as separate UI nodes when enrolling.
-  const qrNode = (flow.ui?.nodes ?? []).find(
-    (n) => n.group === 'totp' && n.type === 'img' && (n.attributes as { id?: string }).id === 'totp_qr',
-  )
-  const qrSrc = (qrNode?.attributes as { src?: string } | undefined)?.src
-  const secretNode = (flow.ui?.nodes ?? []).find(
-    (n) => n.group === 'totp' && n.type === 'text' && (n.attributes as { id?: string }).id === 'totp_secret_key',
-  )
-  const secret = (secretNode?.attributes as { text?: { text?: string } } | undefined)?.text?.text
-
-  const submit = async (action: 'verify' | 'unlink') => {
-    setSubmitting(true)
-    try {
-      const body = action === 'verify'
-        ? { method: 'totp', totp_code: code, csrf_token: getCsrfToken(flow) }
-        : { method: 'totp', totp_unlink: true, csrf_token: getCsrfToken(flow) }
-      const { data } = await createBrowserClient().updateSettingsFlow({ flow: flow.id, updateSettingsFlowBody: body as UpdateSettingsFlowBody })
-      setCode('')
-      onSettingsSaved(data, flow, 'totp', onChanged)
-    } catch (err: unknown) {
-      // Privileged-session check: TOTP enroll/unlink is sensitive, so Kratos
-      // requires a recent re-auth (privileged_session_max_age) and answers
-      // 403 session_refresh_required. 400: the updated flow carries the
-      // field error ("the provided code did not match") — clear the stale
-      // code (TOTP rotates every 30 s) and re-render.
-      setCode('')
-      onSettingsError(err, flowContext(flow), 'Could not update the authenticator app.', onChanged)
-    } finally { setSubmitting(false) }
-  }
-
-  const totpErr = totpInput?.errors?.[0]
-  const flowLevelErrs = (flow.ui?.messages || [])
-    .filter((m) => m.type === 'error')
-    .map((m) => m.text)
-
-  return (
-    <TotpRow
-      enrolled={enrolled}
-      canEnrol={!!totpInput}
-      qrSrc={qrSrc}
-      secret={secret}
-      code={code}
-      setCode={setCode}
-      submitting={submitting}
-      error={totpErr || flowLevelErrs[0]}
-      onVerify={() => submit('verify')}
-      onUnlink={() => submit('unlink')}
-    />
   )
 }
 

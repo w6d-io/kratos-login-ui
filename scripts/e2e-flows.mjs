@@ -104,6 +104,11 @@ try {
   const en = await req(j, `${K}/self-service/settings?flow=${sf.id}`, { method: 'POST', json: { method: 'totp', totp_code: totp(secret), csrf_token: csrf(sf) } })
   const cw = en.data.continue_with ?? []
   check('TOTP enrolment succeeds', en.status === 200, `continue_with: ${cw.map((c) => c.action).join(',')}`)
+  // The /two-step gate enrols an aal1 session that has no second factor: Kratos must offer the
+  // settings flow at aal1 then (step 2 did), and the enrolment itself proves the factor — the gate
+  // then sends the person on without a second prompt (else it steps up; see src/lib/two-step.ts).
+  const afterEnrol = (await req(j, `${K}/sessions/whoami`)).data
+  check('enrolling TOTP at aal1 raises the session to aal2', afterEnrol.authenticator_assurance_level === 'aal2', afterEnrol.authenticator_assurance_level ?? '')
 
   // 3. First factor for an enrolled identity: aal1 session (whoami aal1) or a
   //    browser_location_change_required to the aal2 flow (highest_available).

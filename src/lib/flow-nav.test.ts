@@ -6,6 +6,7 @@ vi.mock('next-runtime-env', () => ({ env: (k: string) => envVars[k] }))
 import { isReturnUrlAllowed } from './config'
 import {
   flowContext,
+  destinationUrl,
   landingUrl,
   recallFlowContext,
   rememberFlowContext,
@@ -21,6 +22,8 @@ import {
 
 const ORIGIN = 'https://auth.example.com'
 const KRATOS = 'https://auth.example.com'
+/** A finished sign-in's destination, through the two-step gate. */
+const via = (dest: string) => `${ORIGIN}/two-step?return_to=${encodeURIComponent(dest)}`
 
 function memStore() {
   const m = new Map<string, string>()
@@ -84,10 +87,20 @@ describe('safeReturnTo / landingUrl', () => {
     expect(safeReturnTo('https://app.example.com/p?q=1', ORIGIN)).toBe('https://app.example.com/p?q=1')
   })
   it('without a valid return_to lands on /welcome — never a static default, never /login', () => {
+    expect(destinationUrl('https://app.example.com/p', ORIGIN)).toBe('https://app.example.com/p')
+    expect(destinationUrl(`${ORIGIN}/login?x=1`, ORIGIN)).toBe(`${ORIGIN}/welcome`)
+    expect(destinationUrl(null, ORIGIN)).toBe(`${ORIGIN}/welcome`)
+    expect(destinationUrl('https://evil.io', ORIGIN)).toBe(`${ORIGIN}/welcome`)
+  })
+  it('every landing passes the two-step gate, carrying the validated destination', () => {
+    expect(landingUrl('https://app.example.com/p', ORIGIN)).toBe(via('https://app.example.com/p'))
+    expect(landingUrl('https://evil.io', ORIGIN)).toBe(via(`${ORIGIN}/welcome`))
+    expect(landingUrl(null, ORIGIN)).toBe(via(`${ORIGIN}/welcome`))
+  })
+  it('NEXT_PUBLIC_SECOND_FACTOR_GATE=false lands directly', () => {
+    envVars.NEXT_PUBLIC_SECOND_FACTOR_GATE = 'false'
     expect(landingUrl('https://app.example.com/p', ORIGIN)).toBe('https://app.example.com/p')
-    expect(landingUrl(`${ORIGIN}/login?x=1`, ORIGIN)).toBe(`${ORIGIN}/welcome`)
     expect(landingUrl(null, ORIGIN)).toBe(`${ORIGIN}/welcome`)
-    expect(landingUrl('https://evil.io', ORIGIN)).toBe(`${ORIGIN}/welcome`)
   })
   it('accepts Kratos redirects on the Kratos origin only', () => {
     expect(safeKratosRedirect('https://kratos.example.net/self-service/login/browser', ORIGIN, 'https://kratos.example.net')).toMatch(/^https:\/\/kratos/)
@@ -188,7 +201,7 @@ describe('resolveKratosError', () => {
     expect(a.kind).not.toBe('redirect')
   })
   it('session_already_available lands on return_to', () => {
-    expect(resolveKratosError(kerr(400, { error: { id: 'session_already_available' } }), opts())).toEqual({ kind: 'redirect', to: 'https://app.example.com/page' })
+    expect(resolveKratosError(kerr(400, { error: { id: 'session_already_available' } }), opts())).toEqual({ kind: 'redirect', to: via('https://app.example.com/page') })
   })
   it('expired session on settings goes to sign-in, then back to settings', () => {
     const a = resolveKratosError(kerr(401, { error: { id: 'session_inactive' } }), opts({ kind: 'settings', authReturnTo: `${ORIGIN}/settings` }))
@@ -212,14 +225,14 @@ describe('resolveContinueWith', () => {
   const base = { origin: ORIGIN, kratosBase: KRATOS }
   it('follows redirect_browser_to to the flow\'s return_to', () => {
     const data = { continue_with: [{ action: 'redirect_browser_to', redirect_browser_to: 'https://app.example.com/p' }] }
-    expect(resolveContinueWith(data, { ...base, returnTo: 'https://app.example.com/p' })).toEqual({ kind: 'redirect', to: 'https://app.example.com/p' })
+    expect(resolveContinueWith(data, { ...base, returnTo: 'https://app.example.com/p' })).toEqual({ kind: 'redirect', to: via('https://app.example.com/p') })
   })
   it('never follows Kratos\' default_browser_return_url when the flow had no return_to', () => {
     const data = { continue_with: [{ action: 'redirect_browser_to', redirect_browser_to: 'https://app.example.com/' }] }
-    expect(resolveContinueWith(data, base)).toEqual({ kind: 'redirect', to: `${ORIGIN}/welcome` })
-    expect(resolveContinueWith(data, { ...base, returnTo: 'https://evil.io/' })).toEqual({ kind: 'redirect', to: `${ORIGIN}/welcome` })
+    expect(resolveContinueWith(data, base)).toEqual({ kind: 'redirect', to: via(`${ORIGIN}/welcome`) })
+    expect(resolveContinueWith(data, { ...base, returnTo: 'https://evil.io/' })).toEqual({ kind: 'redirect', to: via(`${ORIGIN}/welcome`) })
     const root = { continue_with: [{ action: 'redirect_browser_to', redirect_browser_to: `${ORIGIN}/` }] }
-    expect(resolveContinueWith(root, base)).toEqual({ kind: 'redirect', to: `${ORIGIN}/welcome` })
+    expect(resolveContinueWith(root, base)).toEqual({ kind: 'redirect', to: via(`${ORIGIN}/welcome`) })
   })
   it('still follows flow hops (settings, Kratos) without a return_to', () => {
     const s = { continue_with: [{ action: 'redirect_browser_to', redirect_browser_to: `${ORIGIN}/settings?flow=s9` }] }
@@ -234,7 +247,7 @@ describe('resolveContinueWith', () => {
         { action: 'redirect_browser_to', redirect_browser_to: 'https://app.example.com/site' },
       ],
     }
-    expect(resolveContinueWith(data, { ...base, returnTo: 'https://app.example.com/site', skipVerification: true })).toEqual({ kind: 'redirect', to: 'https://app.example.com/site' })
+    expect(resolveContinueWith(data, { ...base, returnTo: 'https://app.example.com/site', skipVerification: true })).toEqual({ kind: 'redirect', to: via('https://app.example.com/site') })
     expect(resolveContinueWith(data, base)).toEqual({ kind: 'redirect', to: '/verification?flow=v1' })
   })
   it('settings: a redirect back to the same flow is a re-render', () => {
@@ -242,7 +255,11 @@ describe('resolveContinueWith', () => {
     expect(resolveContinueWith(data, { ...base, currentSettingsFlowId: 's1' })).toEqual({ kind: 'refetch' })
   })
   it('session without directives lands on return_to (never /login)', () => {
-    expect(resolveContinueWith({ session: {} }, { ...base, returnTo: `${ORIGIN}/login` })).toEqual({ kind: 'redirect', to: `${ORIGIN}/welcome` })
+    expect(resolveContinueWith({ session: {} }, { ...base, returnTo: `${ORIGIN}/login` })).toEqual({ kind: 'redirect', to: via(`${ORIGIN}/welcome`) })
+  })
+  it('a redirect back to the gate or another page of this UI is a hop, never wrapped twice', () => {
+    const g = { continue_with: [{ action: 'redirect_browser_to', redirect_browser_to: via('https://app.example.com/p') }] }
+    expect(resolveContinueWith(g, { ...base, returnTo: via('https://app.example.com/p') })).toEqual({ kind: 'redirect', to: via('https://app.example.com/p') })
     expect(resolveContinueWith({}, base)).toBeNull()
   })
   it('keeps the settings tab across show_settings_ui', () => {

@@ -1,4 +1,4 @@
-import { isReturnUrlAllowed } from './config'
+import { config, isReturnUrlAllowed } from './config'
 import { initFlowUrl } from './ory'
 
 /**
@@ -103,15 +103,35 @@ function isLoginLoop(url: string, origin: string): boolean {
 /** The "Where to?" page (src/lib/landing.ts) — the only fallback destination. */
 export const WELCOME_PATH = '/welcome'
 
+/** The two-step gate (src/lib/two-step.ts): set up or prove a second factor when the account must. */
+export const TWO_STEP_PATH = '/two-step'
+
 /**
- * Where a signed-in person goes: a valid return_to, else /welcome (site
- * landing or picker). Never Kratos' or our own static default, and never
- * this UI's root or /login (that would loop).
+ * The final destination of a signed-in person: a valid return_to, else
+ * /welcome (site landing or picker). Never Kratos' or our own static
+ * default, and never this UI's root or /login (that would loop). Only the
+ * gate itself goes here directly; everything else uses landingUrl.
  */
-export function landingUrl(returnTo: string | null | undefined, origin: string): string {
+export function destinationUrl(returnTo: string | null | undefined, origin: string): string {
   const safe = safeReturnTo(returnTo, origin)
   if (safe && !isLoginLoop(safe, origin)) return safe
   return `${origin}${WELCOME_PATH}`
+}
+
+/** The gate for a destination already validated by destinationUrl. */
+export function gateUrl(destination: string, origin: string): string {
+  return `${origin}${TWO_STEP_PATH}?return_to=${encodeURIComponent(destination)}`
+}
+
+/**
+ * Where a signed-in person goes: through the two-step gate to
+ * destinationUrl — so no sign-in leaves this UI for a site before an account
+ * that must have a second factor has one (NEXT_PUBLIC_SECOND_FACTOR_GATE=false
+ * skips the gate). Every exit of a finished flow is built here.
+ */
+export function landingUrl(returnTo: string | null | undefined, origin: string): string {
+  const destination = destinationUrl(returnTo, origin)
+  return config.secondFactorGate ? gateUrl(destination, origin) : destination
 }
 
 type FlowLike = { return_to?: string; requested_aal?: string; refresh?: boolean } | null | undefined
@@ -325,7 +345,8 @@ export function resolveContinueWith(data: unknown, o: ContinueOptions): NavActio
             return { kind: 'refetch' }
           }
         }
-        return { kind: 'redirect', to }
+        // Leaving this UI for a destination: through the gate, like every other landing.
+        return { kind: 'redirect', to: isFlowHop(to, o.origin, o.kratosBase) ? to : landingUrl(to, o.origin) }
       }
       case 'show_verification_ui':
         if (c.flow?.id && !o.skipVerification) return { kind: 'redirect', to: `${UI_PATH.verification}?flow=${encodeURIComponent(c.flow.id)}` }

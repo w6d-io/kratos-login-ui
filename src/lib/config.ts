@@ -41,6 +41,10 @@ function makeConfig() {
     // requires aal1. 'false' restores password-only sign-in.
     get stepUpAfterLogin(): boolean { return env('NEXT_PUBLIC_STEP_UP_AFTER_LOGIN') !== 'false' },
 
+    // Every finished sign-in passes through /two-step, which asks jinbe whether this account must
+    // set up (or prove) a second factor before going on. 'false' lands directly on return_to.
+    get secondFactorGate(): boolean { return env('NEXT_PUBLIC_SECOND_FACTOR_GATE') !== 'false' },
+
     // Admin console (kuma), linked from /welcome when sites can't be listed.
     get consoleUrl(): string { return env('NEXT_PUBLIC_CONSOLE_URL') || '' },
 
