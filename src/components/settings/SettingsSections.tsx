@@ -109,7 +109,7 @@ export function IdentityHeader({ displayName, email, verified, returnTo, mfaOn, 
   )
 }
 
-export function ProfileSection({ traitFields, traits, setTrait, submitting, disabled, onSubmit, onReset, humanize }: {
+export function ProfileSection({ traitFields, traits, setTrait, submitting, disabled, onSubmit, onReset, humanize, botCheck, botCheckPending }: {
   traitFields: FlowField[]
   traits: Record<string, string>
   setTrait: (name: string, value: string) => void
@@ -118,9 +118,12 @@ export function ProfileSection({ traitFields, traits, setTrait, submitting, disa
   onSubmit: (e: FormEvent) => void
   onReset: () => void
   humanize: (name: string) => string
+  /** The bot check, drawn only while the email is being changed (saving sends a verification email). */
+  botCheck?: ReactNode
+  botCheckPending?: boolean
 }) {
   return (
-    <form onSubmit={onSubmit} noValidate>
+    <form onSubmit={(e) => { if (botCheckPending) { e.preventDefault(); return } onSubmit(e) }} noValidate>
       <Section
         id="profile"
         title="Profile"
@@ -129,7 +132,7 @@ export function ProfileSection({ traitFields, traits, setTrait, submitting, disa
           <>
             <span className="foot-note">Changing your email means verifying the new one.</span>
             <button type="button" className="btn btn-ghost" onClick={onReset} disabled={disabled}>Discard</button>
-            <button type="submit" className="btn btn-primary" disabled={submitting}>
+            <button type="submit" className="btn btn-primary" disabled={submitting || !!botCheckPending} aria-describedby={botCheckPending ? 'profile-bot-hint' : undefined}>
               {submitting ? <><span className="spinner" aria-hidden /> Saving…</> : 'Save changes'}
             </button>
           </>
@@ -153,6 +156,12 @@ export function ProfileSection({ traitFields, traits, setTrait, submitting, disa
             </Field>
           )
         })}
+        {botCheck && (
+          <div className="mt-4">
+            {botCheck}
+            {botCheckPending && <p id="profile-bot-hint" className="small muted" style={{ margin: 'var(--space-2) 0 0' }}>A new email address gets a verification email: complete the bot check to save.</p>}
+          </div>
+        )}
       </Section>
     </form>
   )

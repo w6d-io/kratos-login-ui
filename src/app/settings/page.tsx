@@ -20,8 +20,8 @@ import { FlowMessages } from '@/components/flow/FlowMessages'
 import { DangerSection, IdentityHeader, PasswordSection, ProfileSection, Section, SessionsSection, SettingsNav, type SettingsTab } from '@/components/settings/SettingsSections'
 import { BackupCodesRow, PasskeysRow } from '@/components/settings/MfaViews'
 import { MfaTotpSection, onSettingsError, onSettingsSaved } from '@/components/settings/TotpSection'
-import { useSignInProtection } from '@/components/ui/BotCheck'
-import { DEFAULT_PROTECTED_TRAITS, isProtectedTrait } from '@/lib/sign-in-protection'
+import { useBotCheck, useSignInProtection } from '@/components/ui/BotCheck'
+import { captchaHeaders, DEFAULT_PROTECTED_TRAITS, isEmailChange, isProtectedTrait, isTokenRefusal } from '@/lib/sign-in-protection'
 
 type Tab = SettingsTab
 
@@ -155,7 +155,14 @@ function SettingsPageContent() {
   // Traits only an administrator sets (the gateway forwards them to apps) are not shown. Their values
   // stay in `traits` and go back unchanged with every save; jinbe's guard hook refuses a change and
   // puts back one left out.
-  const protectedTraits = useSignInProtection()?.protectedTraits ?? DEFAULT_PROTECTED_TRAITS
+  const protection = useSignInProtection()
+  const protectedTraits = protection?.protectedTraits ?? DEFAULT_PROTECTED_TRAITS
+  // A new email address gets a verification email: that save alone goes through the verification
+  // bot check at the gateway. The token is for that one save (one email).
+  const currentEmail = ((session?.identity ?? (flow as { identity?: { traits?: Record<string, unknown> } } | null)?.identity)?.traits as { email?: unknown } | undefined)?.email
+  const editedEmail = traits['traits.email']
+  const emailChange = isEmailChange(typeof currentEmail === 'string' ? currentEmail : '', editedEmail)
+  const bot = useBotCheck('verification', protection, { flowId: flow?.id, address: editedEmail, enabled: emailChange })
   const traitFields = useMemo(
     () => flow ? getInputs(flow, 'profile').filter((f) => f.name.startsWith('traits.') && !isProtectedTrait(f.name, protectedTraits)) : [],
     [flow, protectedTraits],
@@ -180,9 +187,12 @@ function SettingsPageContent() {
         cur[path[path.length - 1]] = v
       }
       const body = { method: 'profile', traits: traitsObj, csrf_token: getCsrfToken(flow) } as unknown as UpdateSettingsFlowBody
-      const { data } = await createBrowserClient().updateSettingsFlow({ flow: flow.id, updateSettingsFlowBody: body })
+      const token = bot.use(editedEmail)
+      const { data } = await createBrowserClient().updateSettingsFlow({ flow: flow.id, updateSettingsFlowBody: body }, captchaHeaders(token))
+      if (token) bot.reset()
       onSettingsSaved(data, flow, 'profile', () => fetchFlow(flow.id))
     } catch (err: unknown) {
+      if (isTokenRefusal(err)) bot.reset()
       onSettingsError(err, flowContext(flow), 'Profile update failed.', () => fetchFlow(flow.id), setNetworkError)
     } finally { setSubmitting(null) }
   }
@@ -251,6 +261,8 @@ function SettingsPageContent() {
             onSubmit={submitProfile}
             onReset={() => fetchFlow(flow.id)}
             humanize={humanize}
+            botCheck={bot.widget}
+            botCheckPending={bot.pending}
           />
         )}
 
