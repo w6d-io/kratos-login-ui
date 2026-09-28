@@ -7,10 +7,11 @@ import { Loading } from '@/components/Loading'
 import { createBrowserClient } from '@/lib/kratos'
 import { initFlowUrl } from '@/lib/ory'
 import { getTriggerButton } from '@/lib/kratos-flow'
-import { destinationUrl, gateUrl } from '@/lib/flow-nav'
+import { destinationUrl, gateUrl, WELCOME_PATH } from '@/lib/flow-nav'
 import { sessionStore } from '@/lib/flow-nav-browser'
 import { switchAccountUrl } from '@/lib/access'
 import { blindPassGuard, resolveGate, stepUpGuard } from '@/lib/two-step'
+import { forgetDestination } from '@/lib/landing'
 import type { SecondFactorResult } from '@/lib/second-factor-server'
 import { useBranding, useBrandingReturnTo } from '@/components/ui/Branding'
 import { Icons } from '@/components/ui/Icons'
@@ -70,11 +71,13 @@ function TwoStepPageContent() {
       mayContinueUnchecked: () => blindPassGuard(destination, sessionStore()),
     }).then((o) => {
       running.current = false
+      // Reached: /welcome no longer needs the remembered destination (it uses it itself).
+      if (o.kind === 'continue' && o.to !== `${origin}${WELCOME_PATH}`) forgetDestination(sessionStore())
       if (o.kind === 'continue' || o.kind === 'stepup' || o.kind === 'signin') window.location.assign(o.to)
       else if (o.kind === 'enrol') loadFlow()
       else setView(o.kind)
     })
-  }, [destination, selfUrl, loadFlow])
+  }, [destination, selfUrl, origin, loadFlow])
 
   useEffect(() => { run() }, [run])
 

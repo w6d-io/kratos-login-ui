@@ -5,12 +5,12 @@ import { Loading } from '@/components/Loading'
 import { WelcomeView, type WelcomeViewProps } from '@/components/flow/WelcomeView'
 import { config } from '@/lib/config'
 import { returnGuard } from '@/lib/access'
-import { gateUrl, safeReturnTo } from '@/lib/flow-nav'
+import { destinationUrl, gateUrl, safeReturnTo } from '@/lib/flow-nav'
 import { initFlowUrl } from '@/lib/ory'
 import { resolveGate, stepUpGuard } from '@/lib/two-step'
 import type { SecondFactorResult } from '@/lib/second-factor-server'
 import { sessionStore } from '@/lib/flow-nav-browser'
-import { lastSiteChoice, originHosts, rememberSiteChoice, resolveWelcome } from '@/lib/landing'
+import { forgetDestination, lastSiteChoice, originHosts, recallDestination, rememberSiteChoice, resolveWelcome } from '@/lib/landing'
 import type { MySitesResult } from '@/lib/sites-server'
 
 function localStore(): Storage | null {
@@ -23,8 +23,8 @@ function localStore(): Storage | null {
 
 /**
  * Landing for flows that finished without a valid return_to (never Kratos'
- * default_browser_return_url): the originating site's landing URL, the only
- * reachable site, or a picker. See src/lib/landing.ts.
+ * default_browser_return_url): the page this tab's sign-in started for, the
+ * originating site's landing URL, the only reachable site, or a picker. See src/lib/landing.ts.
  */
 function WelcomePageContent() {
   const [state, setState] = useState<WelcomeViewProps['state'] | null>(null)
@@ -50,6 +50,12 @@ function WelcomePageContent() {
       if (g.kind === 'stepup') { window.location.assign(g.to); return }
     }
     void resolveWelcome({
+      rememberedDestination: () => {
+        const url = recallDestination(sessionStore())
+        forgetDestination(sessionStore())
+        const safe = safeReturnTo(url, window.location.origin)
+        return safe && destinationUrl(safe, window.location.origin) === safe ? safe : null
+      },
       originHosts: originHosts(window.location.host, sessionStore()),
       landingFor: async (host) => {
         const res = await fetch(`/api/landing?host=${encodeURIComponent(host)}`, { credentials: 'same-origin' })

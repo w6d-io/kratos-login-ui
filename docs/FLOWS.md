@@ -119,7 +119,13 @@ This is where a finished flow goes without a valid return_to: login, step-up,
 registration, verification, the error page, and a signed-in visit to `/login`. Logic is in
 `src/lib/landing.ts`; the page is `src/app/welcome`.
 
-1. The site the flow started from is tried first. That is the flow page's referrer when
+0. The page this tab's sign-in started for comes first. `/login` and `/register` remember
+   a valid return_to (URL or flow) in sessionStorage for 30 minutes, so a hop that starts
+   a fresh flow without it still lands there, not on the picker. It is cleared once the
+   gate continues to a destination, when /welcome uses it, and on sign-out. Every link
+   back to sign-in (email-code step, recovery, "Forgot password?") carries return_to as
+   well.
+1. The site the flow started from is tried next. That is the flow page's referrer when
    it is an allowed URL on another host (kept in sessionStorage), then this UI's own
    host. The page calls `GET /api/landing?host=`, which returns jinbe by-host
    `defaultReturnUrl` after an allow-list check. If there is a URL, go there.

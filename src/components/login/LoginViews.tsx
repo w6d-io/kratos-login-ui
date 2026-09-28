@@ -166,7 +166,7 @@ export function PasswordView(p: Base & BotCheckSlot & {
         label="Password"
         htmlFor="login-pw"
         error={pwError}
-        after={refreshing ? undefined : <div className="field-after-link"><Link href="/recovery">Forgot password?</Link></div>}
+        after={refreshing ? undefined : <div className="field-after-link"><Link href={withQuery('/recovery', p.returnTo)}>Forgot password?</Link></div>}
       >
         <PasswordInput
           id="login-pw"
@@ -282,7 +282,7 @@ export function CodeView(p: Base & BotCheckSlot & {
       icon={<Icons.Mail size={20} />}
       title="Sign in with an email code"
       subtitle="No password needed — we’ll email you a 6-digit code."
-      footer={<Link href="/login" className="back"><Icons.ArrowLeft size={12} /> All sign-in options</Link>}
+      footer={<Link href={withQuery('/login', flow.return_to || '')} className="back"><Icons.ArrowLeft size={12} /> All sign-in options</Link>}
     >
       <FlowMessages banners={p.banners} networkError={p.networkError} />
       <form onSubmit={p.onSubmitCodeRequest} noValidate>
