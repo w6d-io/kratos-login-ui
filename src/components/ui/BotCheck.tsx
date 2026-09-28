@@ -133,33 +133,94 @@ export function BotCheckWidget({ check, action, onToken }: {
   )
 }
 
-/**
- * Everything a flow page needs: the widget to place in its form (null when this flow asks for no
- * check), the current token, whether a submit must wait for one, `reset()` after each submit, and
- * `take()` — the token for this submit (null when the flow asks for none), asking for a fresh one.
- */
-export function useBotCheck(flow: BotCheckFlow, protection: SignInProtection | null): {
+const normAddress = (a: string | null | undefined): string => (a ?? '').trim().toLowerCase()
+
+export interface BotCheck {
+  /** The widget to place in the form; null when this flow asks for no check. */
   widget: ReactNode
   token: string | null
+  /** A submit must wait: the flow asks for the check and there is no token yet. */
   pending: boolean
+  /** Drop the token and ask the widget for a new one. */
   reset: () => void
-  take: () => string | null
-} {
-  const check = protection ? botCheckFor(protection, flow) : null
+  /**
+   * The token for this submit (null when the flow asks for none), KEPT for the flow's next steps: the
+   * gateway turns a verified token into a pass for this Kratos flow and this address. `address` is
+   * the one the submit carries; the first one binds the token.
+   */
+  use: (address?: string | null) => string | null
+  /**
+   * A token nobody used yet, for a submit that needs one of its own (a resend: the pass covers one
+   * email). Resets the widget and resolves with its next token; null when the flow asks for none.
+   */
+  fresh: () => Promise<string | null>
+}
+
+/**
+ * Everything a flow page needs to carry the bot-check token through one Kratos flow.
+ *
+ * One token per flow: the address step, the code, the password, the details step all send the same
+ * token, so nobody solves the check again on each step. A new token is asked for only when the
+ * gateway would refuse the old one: a resend (`fresh()`), another address than the one the token was
+ * first used with (`address` changes), a refusal of the token (the page calls `reset()`), or a new
+ * flow (`flowId` changes). The widget refreshing an expired token on its own is fine too.
+ */
+export function useBotCheck(
+  flow: BotCheckFlow,
+  protection: SignInProtection | null,
+  opts: { flowId?: string | null; address?: string | null; enabled?: boolean } = {},
+): BotCheck {
+  const found = protection ? botCheckFor(protection, flow) : null
+  const check = opts.enabled === false ? null : found
   const [token, setToken] = useState<string | null>(null)
   const [generation, setGeneration] = useState(0)
   // Submits run from closures of an earlier render (the sign-up code is sent after the details
   // step): read the latest token, not the one that render saw.
   const latest = useRef<string | null>(null)
-  const onToken = useCallback((t: string | null) => { latest.current = t; setToken(t) }, [])
-  const reset = useCallback(() => { latest.current = null; setToken(null); setGeneration((g) => g + 1) }, [])
+  const bound = useRef<string | null>(null)
+  const waiters = useRef<Array<(t: string | null) => void>>([])
+  const onToken = useCallback((t: string | null) => {
+    latest.current = t
+    setToken(t)
+    if (t) {
+      const w = waiters.current
+      waiters.current = []
+      w.forEach((resolve) => resolve(t))
+    }
+  }, [])
+  const reset = useCallback(() => {
+    latest.current = null
+    bound.current = null
+    setToken(null)
+    setGeneration((g) => g + 1)
+  }, [])
   const enabled = !!check
-  const take = useCallback(() => {
+  const use = useCallback((address?: string | null) => {
     if (!enabled) return null
-    const t = latest.current
+    const a = normAddress(address)
+    if (a && latest.current && bound.current === null) bound.current = a
+    return latest.current
+  }, [enabled])
+  const fresh = useCallback((): Promise<string | null> => {
+    if (!enabled) return Promise.resolve(null)
     reset()
-    return t
+    return new Promise((resolve) => { waiters.current.push(resolve) })
   }, [enabled, reset])
+
+  // A new flow: the old token's pass belongs to the old one.
+  const flowId = opts.flowId ?? null
+  const lastFlow = useRef(flowId)
+  useEffect(() => {
+    if (lastFlow.current !== null && flowId !== null && flowId !== lastFlow.current) reset()
+    if (flowId !== null) lastFlow.current = flowId
+  }, [flowId, reset])
+
+  // Another address than the token was used with: the gateway would refuse it, ask for a new one now.
+  const address = normAddress(opts.address)
+  useEffect(() => {
+    if (bound.current !== null && address && address !== bound.current) reset()
+  }, [address, reset])
+
   const widget = check ? <BotCheckWidget key={generation} check={check} action={flow} onToken={onToken} /> : null
-  return { widget, token, pending: !!check && !token, reset, take }
+  return { widget, token, pending: !!check && !token, reset, use, fresh }
 }

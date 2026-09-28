@@ -88,17 +88,19 @@ function CodeForm({ p, flow, cta, idPrefix, code, setCode, onSubmitCode }: {
   onSubmitCode: Submit
 }) {
   return (
-    <form onSubmit={onSubmitCode} noValidate>
+    // The gateway checks the code submit too (with the token the email was sent with): wait for it.
+    <form onSubmit={(e) => { if (p.botCheckPending) { e.preventDefault(); return } return onSubmitCode(e) }} noValidate>
       <Field
         label="6-digit code"
         htmlFor={`${idPrefix}-code`}
         error={getInput(flow, 'code')?.errors?.[0]}
         hint="It can take a minute to arrive. Not there? Check spam or promotions."
       >
-        <OtpInput id={`${idPrefix}-code`} value={code} onChange={setCode} />
+        {/* A full code submits by itself, bypassing the disabled button: not while the check waits. */}
+        <OtpInput id={`${idPrefix}-code`} value={code} onChange={setCode} autoSubmit={!p.botCheckPending} />
       </Field>
       <div className="form-actions">
-        <button type="submit" className="btn btn-primary btn-block" disabled={p.submitting || code.length !== 6}>
+        <button type="submit" className="btn btn-primary btn-block" disabled={p.submitting || code.length !== 6 || !!p.botCheckPending}>
           <Busy busy={p.submitting} idle={cta} working="Checking code…" />
         </button>
       </div>

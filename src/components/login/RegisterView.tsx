@@ -134,6 +134,7 @@ export function RegisterView(p: {
                 key={o.provider}
                 type="button"
                 className="method-btn"
+                disabled={!!p.botCheckPending}
                 onClick={() => { rememberMethod(`oidc:${o.provider.toLowerCase()}`); p.onSubmitOidc(o.provider) }}
               >
                 <MethodContent icon={<ProviderLogo name={o.provider} size={18} />} title={`Sign up with ${providerLabel(o.provider)}`} />

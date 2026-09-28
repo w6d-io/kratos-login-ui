@@ -33,14 +33,16 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks())
 
 let taken: Array<string | null> = []
-function Probe({ p, flow }: { p: SignInProtection | null; flow: 'registration' | 'login' }) {
-  const bot = useBotCheck(flow, p)
+type ProbeOpts = { flowId?: string | null; address?: string | null; enabled?: boolean }
+function Probe({ p, flow, opts }: { p: SignInProtection | null; flow: 'registration' | 'login'; opts?: ProbeOpts }) {
+  const bot = useBotCheck(flow, p, opts)
   return (
     <div>
       {bot.widget}
       <span data-testid="state">{bot.widget ? (bot.pending ? 'pending' : `token:${bot.token}`) : 'none'}</span>
       <button onClick={bot.reset}>reset</button>
-      <button onClick={() => { taken.push(bot.take()) }}>take</button>
+      <button onClick={() => { taken.push(bot.use(opts?.address)) }}>use</button>
+      <button onClick={() => { void bot.fresh().then((t) => { taken.push(t) }) }}>fresh</button>
     </div>
   )
 }
@@ -79,25 +81,73 @@ describe('useBotCheck', () => {
   })
 })
 
-describe('take', () => {
-  it('hands the current token once and asks the widget for a fresh one', async () => {
+describe('token lifecycle: one token per flow', () => {
+  const state = () => screen.getByTestId('state').textContent
+  it('keeps the token across the steps of a flow (address step, code, …)', async () => {
     taken = []
-    render(<Probe p={protection({ login: true })} flow="login" />)
+    render(<Probe p={protection({ login: true })} flow="login" opts={{ flowId: 'f1', address: 'ann@corp.io' }} />)
     await waitFor(() => expect(rendered).toHaveLength(1))
-    act(() => rendered[0].callback('tok-1'))
-    act(() => screen.getByText('take').click())
-    expect(taken).toEqual(['tok-1'])
-    expect(screen.getByTestId('state').textContent).toBe('pending')
-    await waitFor(() => expect(rendered).toHaveLength(2))
-    act(() => screen.getByText('take').click())
-    expect(taken).toEqual(['tok-1', null])
+    act(() => rendered[0].callback('T1'))
+    act(() => screen.getByText('use').click())
+    act(() => screen.getByText('use').click())
+    expect(taken).toEqual(['T1', 'T1'])
+    expect(state()).toBe('token:T1')
+    expect(rendered).toHaveLength(1)
   })
 
-  it('is null for a flow that asks for no check', () => {
+  it('asks for a new token when the address changes after it was used', async () => {
     taken = []
-    render(<Probe p={protection({ registration: true })} flow="login" />)
-    act(() => screen.getByText('take').click())
-    expect(taken).toEqual([null])
+    const { rerender } = render(<Probe p={protection({ login: true })} flow="login" opts={{ flowId: 'f1', address: 'ann@corp.io' }} />)
+    await waitFor(() => expect(rendered).toHaveLength(1))
+    act(() => rendered[0].callback('T1'))
+    // Same address, other case: still the same.
+    rerender(<Probe p={protection({ login: true })} flow="login" opts={{ flowId: 'f1', address: 'Ann@Corp.io' }} />)
+    expect(state()).toBe('token:T1')
+    act(() => screen.getByText('use').click())
+    rerender(<Probe p={protection({ login: true })} flow="login" opts={{ flowId: 'f1', address: 'bob@corp.io' }} />)
+    expect(state()).toBe('pending')
+    await waitFor(() => expect(rendered).toHaveLength(2))
+  })
+
+  it('an address typed before the token was used does not reset it', async () => {
+    const { rerender } = render(<Probe p={protection({ login: true })} flow="login" opts={{ flowId: 'f1', address: 'a' }} />)
+    await waitFor(() => expect(rendered).toHaveLength(1))
+    act(() => rendered[0].callback('T1'))
+    rerender(<Probe p={protection({ login: true })} flow="login" opts={{ flowId: 'f1', address: 'ann@corp.io' }} />)
+    expect(state()).toBe('token:T1')
+  })
+
+  it('asks for a new token when a new flow starts', async () => {
+    const { rerender } = render(<Probe p={protection({ login: true })} flow="login" opts={{ flowId: 'f1' }} />)
+    await waitFor(() => expect(rendered).toHaveLength(1))
+    act(() => rendered[0].callback('T1'))
+    rerender(<Probe p={protection({ login: true })} flow="login" opts={{ flowId: 'f1' }} />)
+    expect(state()).toBe('token:T1')
+    rerender(<Probe p={protection({ login: true })} flow="login" opts={{ flowId: 'f2' }} />)
+    expect(state()).toBe('pending')
+  })
+
+  it('fresh() (a resend) waits for a token nobody used', async () => {
+    taken = []
+    render(<Probe p={protection({ login: true })} flow="login" opts={{ flowId: 'f1' }} />)
+    await waitFor(() => expect(rendered).toHaveLength(1))
+    act(() => rendered[0].callback('T1'))
+    act(() => screen.getByText('fresh').click())
+    expect(state()).toBe('pending')
+    await waitFor(() => expect(rendered).toHaveLength(2))
+    expect(taken).toEqual([])
+    await act(async () => { rendered[1].callback('T2') })
+    expect(taken).toEqual(['T2'])
+    expect(state()).toBe('token:T2')
+  })
+
+  it('no check on this flow (or switched off): no token, fresh() resolves null', async () => {
+    taken = []
+    render(<Probe p={protection({ login: true })} flow="login" opts={{ enabled: false }} />)
+    expect(state()).toBe('none')
+    act(() => screen.getByText('use').click())
+    await act(async () => { screen.getByText('fresh').click() })
+    expect(taken).toEqual([null, null])
   })
 })
 

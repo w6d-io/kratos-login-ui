@@ -121,6 +121,7 @@ export function PasswordView(p: Base & BotCheckSlot & {
           key={o.provider}
           type="button"
           className="method-btn"
+          disabled={!!p.botCheckPending}
           onClick={() => { rememberMethod(`oidc:${o.provider.toLowerCase()}`); p.onSubmitOidc(o.provider) }}
         >
           <MethodContent

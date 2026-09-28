@@ -109,11 +109,11 @@ export function signUpLimitText(p: SignInProtection): string | null {
 }
 
 /**
- * Every email a flow sends is checked BEFORE Kratos acts: the gateway hands POST /self-service/* to
- * jinbe, which asks the provider for this header's token when the submit would send a code or link.
- * Same-origin requests, so a custom header needs no CORS allowance. Sent on every submit that emails
- * a code or link, and on the login / sign-up submits that finish (harmless where the gate does not
- * need it), which also keep the token in transient_payload for Kratos' after-hook.
+ * Every submit of a flow that asks for the bot check goes through the gateway first: the gateway
+ * hands POST /self-service/* to jinbe, which wants this header's token before Kratos acts. A token
+ * verified once becomes a pass for that Kratos flow and address (one email under it), so the page
+ * keeps it across the flow's steps (useBotCheck). Same-origin requests, so a custom header needs no
+ * CORS allowance. Login and sign-up keep the token in transient_payload too, for Kratos' after-hook.
  */
 export const CAPTCHA_TOKEN_HEADER = 'X-Captcha-Token'
 
@@ -169,8 +169,7 @@ const GATE_STATUS: Record<GateRefusalId, number> = {
  * The gateway's own refusal — 403 bot check or a code sign-up the registration policy forbids (checked
  * before Kratos emails the code), 429 too many codes, 503 sign-up settings unreadable. Not a Kratos
  * flow, so it carries no `ui`. null for anything else. `status` guards against a Kratos error that
- * happens to reuse an id. The token was spent either way (the bot check runs first); the pages ask
- * for a fresh one after every submit.
+ * happens to reuse an id. Only the captcha_* ones refused the token itself (isTokenRefusal).
  */
 export function gateRefusal(body: unknown, status?: number): GateRefusal | null {
   const e = (body as { error?: Record<string, unknown> } | null)?.error
@@ -187,4 +186,26 @@ export function gateRefusal(body: unknown, status?: number): GateRefusal | null 
 export function isBotCheckRefusal(flowOrBody: unknown): boolean {
   const ui = (flowOrBody as { ui?: { messages?: Array<{ id?: number }> } } | null)?.ui
   return (ui?.messages ?? []).some((m) => m.id === GUARD_MESSAGE_IDS.captchaMissing || m.id === GUARD_MESSAGE_IDS.captchaInvalid || m.id === GUARD_MESSAGE_IDS.captchaUnavailable)
+}
+
+/**
+ * A failed submit that refused the bot-check TOKEN — the gateway's captcha_* answer, or the Kratos
+ * hook's bot-check message in the returned flow: the page asks the widget for a new one. Any other
+ * failure (a wrong password or code, a policy refusal) keeps the token for the next try.
+ */
+export function isTokenRefusal(err: unknown): boolean {
+  const r = (err as { response?: { status?: number; data?: unknown } } | null)?.response
+  if (!r) return false
+  const gate = gateRefusal(r.data, r.status)
+  if (gate) return gate.id.startsWith('captcha_')
+  return isBotCheckRefusal(r.data)
+}
+
+/**
+ * A profile save that changes the email: Kratos emails the new address a verification code, so the
+ * gateway judges that save under the verification check. Any other save passes without a token.
+ */
+export function isEmailChange(current: string | null | undefined, edited: string | null | undefined): boolean {
+  const e = (edited ?? '').trim().toLowerCase()
+  return !!e && e !== (current ?? '').trim().toLowerCase()
 }
