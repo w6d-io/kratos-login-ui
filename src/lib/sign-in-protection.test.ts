@@ -1,7 +1,9 @@
 import { describe, it, expect, vi } from 'vitest'
 import {
   botCheckFor,
+  DEFAULT_PROTECTED_TRAITS,
   gatewayTokenCookie,
+  isProtectedTrait,
   isBotCheckRefusal,
   parseSignInProtection,
   signUpLimitText,
@@ -105,5 +107,20 @@ describe('protection service (server side)', () => {
     const fetchImpl = vi.fn() as unknown as typeof fetch
     expect(await createProtectionService({ baseUrl: '', fetchImpl })()).toEqual(UNKNOWN_PROTECTION)
     expect(fetchImpl).not.toHaveBeenCalled()
+  })
+})
+
+describe('protected traits', () => {
+  it('jinbe\'s list when it gives one (names only); the default ids while it cannot say', () => {
+    expect(parseSignInProtection({ ...jinbeAnswer, protectedTraits: ['person_uuid', 'org_ref', 'bad name', 7] }).protectedTraits).toEqual(['person_uuid', 'org_ref'])
+    expect(parseSignInProtection(jinbeAnswer).protectedTraits).toEqual(DEFAULT_PROTECTED_TRAITS)
+    expect(UNKNOWN_PROTECTION.protectedTraits).toEqual(['person_uuid', 'applicant_uuid'])
+  })
+  it('matches the trait and anything under it, never other fields', () => {
+    expect(isProtectedTrait('traits.person_uuid', DEFAULT_PROTECTED_TRAITS)).toBe(true)
+    expect(isProtectedTrait('traits.applicant_uuid.id', DEFAULT_PROTECTED_TRAITS)).toBe(true)
+    expect(isProtectedTrait('traits.person_uuid_hint', DEFAULT_PROTECTED_TRAITS)).toBe(false)
+    expect(isProtectedTrait('person_uuid', DEFAULT_PROTECTED_TRAITS)).toBe(false)
+    expect(isProtectedTrait('traits.email', DEFAULT_PROTECTED_TRAITS)).toBe(false)
   })
 })

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { RegistrationFlow } from '@ory/client'
-import { RegisterView } from './RegisterView'
+import { RegisterView, credentialStepText } from './RegisterView'
 
 afterEach(cleanup)
 
@@ -73,5 +73,55 @@ describe('RegisterView · email-code sign-up', () => {
     const refused = { ...flow, ui: { ...flow.ui, messages: [{ id: 4000902, type: 'error', text: 'The bot check did not pass or has expired.' }] } } as unknown as RegistrationFlow
     render(<RegisterView {...props({ flow: refused, codeStage: 'enter', code: '', setCode: () => {}, onSubmitCode: () => {}, onResendCode: () => {} })} />)
     expect(screen.getByRole('status').textContent).toMatch(/send a new code/i)
+  })
+})
+
+describe('RegisterView · details step', () => {
+  const fields = [
+    { name: 'traits.email', type: 'email', value: '', required: true, errors: [], label: 'Email' },
+    { name: 'traits.name', type: 'text', value: '', required: false, errors: [], label: 'Name' },
+  ] as never
+  const details = (over: Record<string, unknown> = {}) => props({ traitFields: fields, traits: {}, hasProfileStep: true, ...over })
+
+  it('asks for the email (required) and "Your name" (optional), nothing else', () => {
+    render(<RegisterView {...details()} />)
+    expect(screen.getByLabelText(/^email/i)).toBeTruthy()
+    const name = screen.getByLabelText(/your name/i) as HTMLInputElement
+    expect(name.getAttribute('autocomplete')).toBe('name')
+    expect(screen.getByText(/optional/i)).toBeTruthy()
+    expect(document.querySelectorAll('input.input')).toHaveLength(2)
+  })
+
+  it('code-only sign-up: says the next step is an emailed code, not a password or passkey', () => {
+    render(<RegisterView {...details({ upcoming: ['code'] })} />)
+    const step = screen.getByText(/step 1 of 2/i).textContent ?? ''
+    expect(step).toMatch(/email you a 6-digit code/i)
+    expect(step).not.toMatch(/password|passkey/i)
+  })
+
+  it('password and code: names both; unknown: promises nothing specific', () => {
+    const { rerender } = render(<RegisterView {...details({ upcoming: ['password', 'code'] })} />)
+    expect(screen.getByText(/step 1 of 2/i).textContent).toMatch(/choose a password or get a 6-digit code by email/i)
+    rerender(<RegisterView {...details({ upcoming: null })} />)
+    expect(screen.getByText(/step 1 of 2/i).textContent).toMatch(/choose how to sign in/i)
+  })
+
+  it('keeps the allow-list hint under the email', () => {
+    render(<RegisterView {...details({ signUpLimit: 'Sign-ups are limited to @corp.io addresses.' })} />)
+    expect(screen.getByText(/limited to @corp\.io addresses/i)).toBeTruthy()
+  })
+
+  it('credential step copy names only what is offered', () => {
+    expect(credentialStepText(true, false, true)).toMatch(/password, or get a 6-digit code/i)
+    expect(credentialStepText(true, false, true)).not.toMatch(/passkey/i)
+    expect(credentialStepText(true, true, false)).toMatch(/passkey/i)
+    render(<RegisterView {...props({ codeStage: 'send', hasPassword: true, onSendCode: () => {} })} />)
+    expect(screen.getByText(/set a password, or get a 6-digit code by email instead/i)).toBeTruthy()
+  })
+
+  it('a protected-trait refusal from the server shows as a form error', () => {
+    const refused = { ...flow, ui: { ...flow.ui, messages: [{ id: 4000915, type: 'error', text: 'This sign-up sets account details only an administrator can set.' }] } } as unknown as RegistrationFlow
+    render(<RegisterView {...details({ flow: refused, banners: [{ tone: 'danger', title: 'This sign-up sets account details only an administrator can set.', body: '', id: 4000915 }] })} />)
+    expect(screen.getByText(/only an administrator can set/i)).toBeTruthy()
   })
 })

@@ -14,6 +14,7 @@ import {
   hasGroup,
   handleContinueWith,
   registrationCodeStage,
+  registrationTraitFields,
 } from '@/lib/kratos-flow'
 import { extractFlowBanners } from '@/lib/flow-messages'
 import { RegisterView, SignUpClosedView } from '@/components/login/RegisterView'
@@ -21,7 +22,8 @@ import { flowContext, resolveKratosError } from '@/lib/flow-nav'
 import { applyNav, errorNavOptions, rememberFlowDestination, rememberFlowOrigin } from '@/lib/flow-nav-browser'
 import { signInUrl } from '@/lib/access'
 import { useBotCheck, useSignInProtection } from '@/components/ui/BotCheck'
-import { signUpLimitText } from '@/lib/sign-in-protection'
+import { DEFAULT_PROTECTED_TRAITS, isProtectedTrait, signUpLimitText } from '@/lib/sign-in-protection'
+import { offeredSignUpMethods, parseSignUpMethods, type SignUpMethod } from '@/lib/sign-up-methods'
 
 function RegisterPageContent() {
   const [flow, setFlow] = useState<RegistrationFlow | null>(null)
@@ -39,6 +41,18 @@ function RegisterPageContent() {
   const fetchingRef = useRef(false)
   const protection = useSignInProtection()
   const bot = useBotCheck('registration', protection)
+  // Traits only an administrator sets (the gateway forwards them to apps): never asked, never sent.
+  const protectedTraits = protection?.protectedTraits ?? DEFAULT_PROTECTED_TRAITS
+  // What the identity schema lets Kratos offer — the details step says what comes next.
+  const [schemaMethods, setSchemaMethods] = useState<SignUpMethod[] | null>(null)
+  useEffect(() => {
+    let live = true
+    fetch('/api/sign-up-methods', { headers: { accept: 'application/json' } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body) => { if (live) setSchemaMethods(parseSignUpMethods(body)) })
+      .catch(() => {})
+    return () => { live = false }
+  }, [])
 
   const fetchFlow = useCallback((id: string) => {
     if (fetchingRef.current) return
@@ -86,18 +100,7 @@ function RegisterPageContent() {
 
   const banners = useMemo(() => extractFlowBanners(flow), [flow])
   const oidc = useMemo(() => getOidcProviders(flow), [flow])
-  const traitFields = useMemo(() => {
-    if (!flow) return []
-    // Kratos v26 puts trait inputs in `default`, `profile`, or `password`
-    // groups depending on flow style. Scan all and dedupe by name.
-    const map = new Map<string, ReturnType<typeof getInputs>[number]>()
-    for (const g of ['default', 'profile', 'password']) {
-      for (const f of getInputs(flow, g)) {
-        if (f.name.startsWith('traits.') && !map.has(f.name)) map.set(f.name, f)
-      }
-    }
-    return Array.from(map.values())
-  }, [flow])
+  const traitFields = useMemo(() => registrationTraitFields(flow, (name) => isProtectedTrait(name, protectedTraits)), [flow, protectedTraits])
   // Detect available submit method: prefer password, fall back to profile
   // (multi-step flow — first click captures traits, server returns password fields).
   const hasPassword = useMemo(() => hasGroup(flow, 'password'), [flow])
@@ -110,12 +113,13 @@ function RegisterPageContent() {
   }, [flow])
 
   const codeStage = useMemo(() => registrationCodeStage(flow), [flow])
+  const offered = useMemo(() => offeredSignUpMethods(flow), [flow])
 
   /** `traits.name.first` → { name: { first } }, as Kratos wants them in a submit body. */
   const traitsBody = (): Record<string, unknown> => {
     const out: Record<string, unknown> = {}
     for (const [k, v] of Object.entries(traits)) {
-      if (!k.startsWith('traits.')) continue
+      if (!k.startsWith('traits.') || isProtectedTrait(k, protectedTraits)) continue
       const path = k.slice('traits.'.length).split('.')
       let cur = out
       for (let i = 0; i < path.length - 1; i++) {
@@ -154,6 +158,21 @@ function RegisterPageContent() {
   const onSendCode = () => submitCode({}, 'Could not send the code. Try again.')
   const onResendCode = () => submitCode({ resend: 'code' }, 'Could not send a new code. Try again.')
 
+  // After the details step: when the next one only offers an email code, send it straight away
+  // rather than show a one-button "choice". Otherwise (or on any doubt) show the step as it is.
+  const afterDetails = async (id: string) => {
+    try {
+      const { data } = await createBrowserClient().getRegistrationFlow({ id })
+      const next = offeredSignUpMethods(data)
+      const refused = (data.ui?.messages ?? []).some((m) => m.type === 'error')
+      if (next?.length === 1 && next[0] === 'code' && registrationCodeStage(data) === 'send' && getOidcProviders(data).length === 0 && !refused) {
+        await onSendCode()
+        return
+      }
+    } catch { /* show the flow as it is */ }
+    fetchFlow(id)
+  }
+
   // Typing the code creates the account: Kratos hands this submit to jinbe's hook, which checks the token.
   const onSubmitCode = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -188,12 +207,14 @@ function RegisterPageContent() {
 
       const { data } = await createBrowserClient().updateRegistrationFlow({ flow: flow.id, updateRegistrationFlowBody: body })
       if (handleContinueWith(data, flow.return_to || returnTo)) return
-      fetchFlow(flow.id)
+      if (hasPassword) fetchFlow(flow.id)
+      else void afterDetails(flow.id)
     } catch (err: unknown) {
       // 422 browser_location_change_required = registration succeeded and
       // Kratos wants the browser elsewhere (e.g. verification) — follow it.
+      // The details step "fails" into the next one: Kratos answers it with a 400 and the flow.
       applyNav(resolveKratosError(err, errorNavOptions('registration', flowContext(flow), 'Sign-up failed. Please try again.')), {
-        setFlow: () => fetchFlow(flow.id),
+        setFlow: () => (hasPassword ? fetchFlow(flow.id) : void afterDetails(flow.id)),
         refetch: () => fetchFlow(flow.id),
         setError: setNetworkError,
       })
@@ -248,6 +269,7 @@ function RegisterPageContent() {
       hasPassword={hasPassword}
       hasProfileStep={hasProfileStep}
       hasPasskey={hasGroup(flow, 'passkey')}
+      upcoming={offered ?? schemaMethods}
       returnTo={returnTo}
       signInHref={signInUrl(flow?.return_to || returnTo || null)}
       onSubmit={onSubmit}

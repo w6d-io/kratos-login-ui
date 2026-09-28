@@ -20,10 +20,19 @@ export interface SignInProtection {
     flows: Record<BotCheckFlow, boolean>
   } | null
   registration: { mode: 'open' | 'allowlist' | 'closed'; domains: string[] }
+  /**
+   * Identity traits only an administrator sets (jinbe PROTECTED_TRAITS): the gateway forwards them to
+   * apps as trusted headers. Never a sign-up field; kept but not shown on the profile. jinbe's guard
+   * hook refuses them whatever the form sends — this only keeps the form honest.
+   */
+  protectedTraits: string[]
 }
 
+/** jinbe's default PROTECTED_TRAITS, used while its answer is unknown. */
+export const DEFAULT_PROTECTED_TRAITS = ['person_uuid', 'applicant_uuid']
+
 /** What the page assumes when jinbe cannot say: nothing to draw, the server still decides. */
-export const UNKNOWN_PROTECTION: SignInProtection = { captcha: null, registration: { mode: 'open', domains: [] } }
+export const UNKNOWN_PROTECTION: SignInProtection = { captcha: null, registration: { mode: 'open', domains: [] }, protectedTraits: DEFAULT_PROTECTED_TRAITS }
 
 /** Kratos message ids jinbe's guard answers with (jinbe src/sign-in-protection/guard.ts). */
 export const GUARD_MESSAGE_IDS = {
@@ -33,6 +42,8 @@ export const GUARD_MESSAGE_IDS = {
   registrationClosed: 4000911,
   registrationNotAllowed: 4000912,
   registrationDisposable: 4000913,
+  protectedTrait: 4000915,
+  protectedTraitsUnchecked: 4000916,
 } as const
 
 const PROVIDER_SCRIPT_HOSTS: Record<BotCheckProvider, string> = {
@@ -41,6 +52,7 @@ const PROVIDER_SCRIPT_HOSTS: Record<BotCheckProvider, string> = {
   recaptcha: 'www.google.com',
 }
 
+const TRAIT_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/
 const DOMAIN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/
 
 /**
@@ -50,7 +62,7 @@ const DOMAIN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0
  */
 export function parseSignInProtection(body: unknown): SignInProtection {
   if (!body || typeof body !== 'object') return UNKNOWN_PROTECTION
-  const b = body as { captcha?: Record<string, unknown>; registration?: Record<string, unknown> }
+  const b = body as { captcha?: Record<string, unknown>; registration?: Record<string, unknown>; protectedTraits?: unknown }
   const r = b.registration ?? {}
   const mode = r.mode === 'allowlist' || r.mode === 'closed' ? r.mode : 'open'
   const domains = mode === 'allowlist' && Array.isArray(r.domains) ? r.domains.filter((d): d is string => typeof d === 'string' && DOMAIN.test(d)).slice(0, 20) : []
@@ -68,7 +80,16 @@ export function parseSignInProtection(body: unknown): SignInProtection {
     const flows = Object.fromEntries(BOT_CHECK_FLOWS.map((f) => [f, flowsIn[f] === true])) as Record<BotCheckFlow, boolean>
     if (scriptUrl) captcha = { provider, siteKey: c.siteKey, scriptUrl, flows }
   }
-  return { captcha, registration: { mode, domains } }
+  const protectedTraits = Array.isArray(b.protectedTraits)
+    ? b.protectedTraits.filter((t): t is string => typeof t === 'string' && TRAIT_NAME.test(t)).slice(0, 50)
+    : DEFAULT_PROTECTED_TRAITS
+  return { captcha, registration: { mode, domains }, protectedTraits }
+}
+
+/** `traits.person_uuid` (or a field under it) is one of the protected traits. */
+export function isProtectedTrait(field: string, protectedTraits: readonly string[]): boolean {
+  if (!field.startsWith('traits.')) return false
+  return protectedTraits.includes(field.slice('traits.'.length).split('.')[0])
 }
 
 /** The bot check to draw on this flow's page, or null. */

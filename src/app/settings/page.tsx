@@ -20,6 +20,8 @@ import { FlowMessages } from '@/components/flow/FlowMessages'
 import { DangerSection, IdentityHeader, PasswordSection, ProfileSection, Section, SessionsSection, SettingsNav, type SettingsTab } from '@/components/settings/SettingsSections'
 import { BackupCodesRow, PasskeysRow } from '@/components/settings/MfaViews'
 import { MfaTotpSection, onSettingsError, onSettingsSaved } from '@/components/settings/TotpSection'
+import { useSignInProtection } from '@/components/ui/BotCheck'
+import { DEFAULT_PROTECTED_TRAITS, isProtectedTrait } from '@/lib/sign-in-protection'
 
 type Tab = SettingsTab
 
@@ -150,7 +152,14 @@ function SettingsPageContent() {
   }, [flowId, returnTo, fetchFlow, loadSession, loadSessions])
 
   const banners = useMemo(() => extractFlowBanners(flow), [flow])
-  const traitFields = useMemo(() => flow ? getInputs(flow, 'profile').filter((f) => f.name.startsWith('traits.')) : [], [flow])
+  // Traits only an administrator sets (the gateway forwards them to apps) are not shown. Their values
+  // stay in `traits` and go back unchanged with every save; jinbe's guard hook refuses a change and
+  // puts back one left out.
+  const protectedTraits = useSignInProtection()?.protectedTraits ?? DEFAULT_PROTECTED_TRAITS
+  const traitFields = useMemo(
+    () => flow ? getInputs(flow, 'profile').filter((f) => f.name.startsWith('traits.') && !isProtectedTrait(f.name, protectedTraits)) : [],
+    [flow, protectedTraits],
+  )
   const setTrait = (name: string, value: string) => setTraits((p) => ({ ...p, [name]: value }))
 
   const submitProfile = async (e: React.FormEvent) => {

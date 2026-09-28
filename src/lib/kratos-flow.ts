@@ -65,6 +65,21 @@ export function getInputs(flow: AnyFlow | null, group: string): FlowField[] {
 }
 
 /**
+ * The sign-up form's trait fields: Kratos v26 puts them in `default`, `profile` or `password`
+ * depending on the flow style, so all three are read and deduped by name. Traits in `hidden`
+ * (protected: only an administrator sets them) are left out — never asked, never sent.
+ */
+export function registrationTraitFields(flow: RegistrationFlow | null, hidden: (name: string) => boolean): FlowField[] {
+  const map = new Map<string, FlowField>()
+  for (const g of ['default', 'profile', 'password']) {
+    for (const f of getInputs(flow, g)) {
+      if (f.name.startsWith('traits.') && !map.has(f.name) && !hidden(f.name)) map.set(f.name, f)
+    }
+  }
+  return Array.from(map.values())
+}
+
+/**
  * Where an email-code sign-up stands (Kratos `code` method on a registration flow):
  *   none  — the flow offers no code sign-up;
  *   send  — the code can be requested (a `method=code` submit, no code field yet);

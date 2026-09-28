@@ -20,11 +20,27 @@ import { rememberMethod } from '@/components/flow/prefs'
 import { getInputs, type FlowField, type OidcProvider } from '@/lib/kratos-flow'
 import type { FlowBanner } from '@/lib/flow-messages'
 import { isBotCheckRefusal } from '@/lib/sign-in-protection'
+import { nextStepText, type SignUpMethod } from '@/lib/sign-up-methods'
 
 export function humanizeTrait(name: string): string {
   // 'traits.email' → 'Email', 'traits.name.first' → 'First'
   const last = name.split('.').pop() || name
   return last.replace(/[_-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
+/** The label a person reads: "Your name" for the name, Kratos' title (normalised) otherwise. */
+function traitLabel(f: FlowField): string {
+  if (f.name === 'traits.name') return 'Your name'
+  return fieldLabel(f.label, humanizeTrait(f.name))
+}
+
+/** The credential step's subtitle, naming only what this flow offers. */
+export function credentialStepText(password: boolean, passkey: boolean, code: boolean): string {
+  if (password && passkey) return 'Last step. Set a password, or use a passkey so there’s nothing to remember.'
+  if (password && code) return 'Last step. Set a password, or get a 6-digit code by email instead.'
+  if (password) return 'Last step. Set the password you’ll sign in with.'
+  if (passkey && code) return 'Last step. Use a passkey, or get a 6-digit code by email instead.'
+  return 'Last step. Use a passkey so there’s nothing to remember.'
 }
 
 /** Autocomplete hints for common trait names, when Kratos' schema gives none. */
@@ -56,6 +72,8 @@ export function RegisterView(p: {
   hasPassword: boolean
   hasProfileStep: boolean
   hasPasskey: boolean
+  /** How the account will sign in (the flow's methods, else what the identity schema allows): the details step says what comes next. */
+  upcoming?: SignUpMethod[] | null
   returnTo: string
   /** Where "Sign in" goes; defaults to /login keeping return_to. */
   signInHref?: string
@@ -99,7 +117,7 @@ export function RegisterView(p: {
       subtitle={credentialStep
         ? codeOnly
           ? 'Last step. We’ll email you a 6-digit code to confirm the address and create the account.'
-          : 'Last step. Set a password, or use a passkey so there’s nothing to remember.'
+          : credentialStepText(p.hasPassword, p.hasPasskey, offersCode)
         : branding
         ? `One ${appName} account gets you into ${branding.displayName} and the other apps you’re given.`
         : `It takes about a minute. You’ll use this ${appName} account to sign in.`}
@@ -128,14 +146,14 @@ export function RegisterView(p: {
 
       {showForm && (
         <form onSubmit={p.onSubmit} noValidate>
-          {twoStep && <p className="small muted" style={{ margin: '0 0 var(--space-4)' }}>Step 1 of 2 — your details. Next you’ll choose a password or passkey.</p>}
+          {twoStep && <p className="small muted" style={{ margin: '0 0 var(--space-4)' }}>Step 1 of 2 — your details. {nextStepText(p.upcoming ?? null)}</p>}
           {!credentialStep && p.traitFields.map((f) => {
             const fieldId = `reg-${f.name.replace(/\W/g, '-')}`
             const isEmail = f.type === 'email' || f.name.endsWith('email')
             return (
               <Field
                 key={f.name}
-                label={fieldLabel(f.label, humanizeTrait(f.name))}
+                label={traitLabel(f)}
                 optional={!f.required && !isEmail}
                 htmlFor={fieldId}
                 error={f.errors[0]}
