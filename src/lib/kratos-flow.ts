@@ -64,6 +64,22 @@ export function getInputs(flow: AnyFlow | null, group: string): FlowField[] {
     .filter((f) => f.name !== 'csrf_token')
 }
 
+/**
+ * Where an email-code sign-up stands (Kratos `code` method on a registration flow):
+ *   none  — the flow offers no code sign-up;
+ *   send  — the code can be requested (a `method=code` submit, no code field yet);
+ *   enter — a code was sent: the `code` field is there, with its resend button.
+ * The account is created — and jinbe's hook runs its bot check — on the `enter` submit only;
+ * sending (or resending) the code creates nothing.
+ */
+export function registrationCodeStage(flow: RegistrationFlow | null): 'none' | 'send' | 'enter' {
+  const nodes = (flow?.ui?.nodes ?? []).filter((n) => n.group === 'code' && n.type === 'input')
+  const attrs = nodes.map((n) => n.attributes as UiNodeInputAttributes)
+  if (attrs.some((a) => a.name === 'code' && a.type !== 'submit' && a.type !== 'hidden')) return 'enter'
+  if (attrs.some((a) => a.name === 'method' && a.type === 'submit' && a.value === 'code')) return 'send'
+  return 'none'
+}
+
 /** Find a single input by name (any group). */
 export function getInput(flow: AnyFlow | null, name: string): FlowField | null {
   if (!flow) return null

@@ -7,6 +7,7 @@ import {
   getTriggerButton,
   getHiddenInputs,
   getPasskeyCredentials,
+  registrationCodeStage,
 } from './kratos-flow'
 
 // Minimal flow shapes mirroring what Kratos returns when both password and
@@ -184,5 +185,29 @@ describe('passkey node extraction', () => {
       { id: 'cred-id-1', label: 'MacBook Touch ID', addedAt: '2026-08-01T00:00:00Z' },
     ])
     expect(getPasskeyCredentials(passkeyLoginFlow)).toEqual([])
+  })
+})
+
+describe('registrationCodeStage', () => {
+  const reg = (nodes: Array<{ group: string; name: string; type?: string; value?: string }>) => ({
+    ui: { nodes: nodes.map((n) => ({ type: 'input', group: n.group, attributes: { name: n.name, type: n.type || 'text', value: n.value, node_type: 'input' }, messages: [], meta: {} })) },
+  }) as unknown as import('@ory/client').RegistrationFlow
+
+  it('reads the Kratos v26 code sign-up steps', () => {
+    // Credential step: password and "send me a code" side by side.
+    expect(registrationCodeStage(reg([
+      { group: 'default', name: 'traits.email', type: 'hidden' },
+      { group: 'code', name: 'method', type: 'submit', value: 'code' },
+      { group: 'password', name: 'password', type: 'password' },
+    ]))).toBe('send')
+    // Code sent: the code field and its resend button.
+    expect(registrationCodeStage(reg([
+      { group: 'code', name: 'method', type: 'hidden', value: 'code' },
+      { group: 'code', name: 'code', type: 'text' },
+      { group: 'code', name: 'method', type: 'submit', value: 'code' },
+      { group: 'code', name: 'resend', type: 'submit', value: 'code' },
+    ]))).toBe('enter')
+    expect(registrationCodeStage(reg([{ group: 'password', name: 'password', type: 'password' }]))).toBe('none')
+    expect(registrationCodeStage(null)).toBe('none')
   })
 })

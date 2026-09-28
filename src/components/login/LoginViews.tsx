@@ -257,9 +257,10 @@ export function CodeView(p: Base & BotCheckSlot & {
         footer={<button type="button" className="btn-link" onClick={p.onChangeEmail}>Use a different email</button>}
       >
         <FlowMessages banners={p.banners} networkError={p.networkError} quiet />
-        <form onSubmit={(e) => { rememberMethod('code'); return p.onSubmitCodeVerify(e) }} noValidate>
+        <form onSubmit={(e) => { if (p.botCheckPending) { e.preventDefault(); return } rememberMethod('code'); return p.onSubmitCodeVerify(e) }} noValidate>
           <Field label="Sign-in code" htmlFor="login-code" error={codeField?.errors?.[0]} hint="It can take a minute to arrive. Not there? Check spam or promotions.">
-            <OtpInput id="login-code" value={p.code} onChange={p.setCode} />
+            {/* A full code auto-submits, bypassing the disabled button: not while the bot check waits. */}
+            <OtpInput id="login-code" value={p.code} onChange={p.setCode} autoSubmit={!p.botCheckPending} />
           </Field>
           {/* The email code finishes the sign-in, so the hook checks the token on this submit. */}
           <BotCheckBlock slot={p} id="login-code-bot-hint" />

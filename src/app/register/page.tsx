@@ -13,6 +13,7 @@ import {
   getOidcProviders,
   hasGroup,
   handleContinueWith,
+  registrationCodeStage,
 } from '@/lib/kratos-flow'
 import { extractFlowBanners } from '@/lib/flow-messages'
 import { RegisterView, SignUpClosedView } from '@/components/login/RegisterView'
@@ -27,6 +28,7 @@ function RegisterPageContent() {
   const [loading, setLoading] = useState(true)
   const [traits, setTraits] = useState<Record<string, string>>({})
   const [password, setPassword] = useState('')
+  const [code, setCode] = useState('')
   const [accepted, setAccepted] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [networkError, setNetworkError] = useState<string | null>(null)
@@ -50,8 +52,11 @@ function RegisterPageContent() {
         for (const f of getInputs(data, 'profile')) {
           if (f.name.startsWith('traits.')) tr[f.name] = f.value
         }
-        for (const f of getInputs(data, 'password')) {
-          if (f.name.startsWith('traits.')) tr[f.name] = f.value
+        // The code step echoes them in `default`/`code` only; its submits must carry them again.
+        for (const g of ['password', 'default', 'code']) {
+          for (const f of getInputs(data, g)) {
+            if (f.name.startsWith('traits.') && f.value) tr[f.name] = f.value
+          }
         }
         setTraits((prev) => ({ ...prev, ...tr }))
         setLoading(false)
@@ -102,6 +107,63 @@ function RegisterPageContent() {
     })
   }, [flow])
 
+  const codeStage = useMemo(() => registrationCodeStage(flow), [flow])
+
+  /** `traits.name.first` → { name: { first } }, as Kratos wants them in a submit body. */
+  const traitsBody = (): Record<string, unknown> => {
+    const out: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(traits)) {
+      if (!k.startsWith('traits.')) continue
+      const path = k.slice('traits.'.length).split('.')
+      let cur = out
+      for (let i = 0; i < path.length - 1; i++) {
+        cur[path[i]] = (cur[path[i]] as Record<string, unknown>) || {}
+        cur = cur[path[i]] as Record<string, unknown>
+      }
+      cur[path[path.length - 1]] = v
+    }
+    return out
+  }
+
+  /** One email-code submit; Kratos answers "code sent" as a 400 with the flow, which refetches it. */
+  const submitCode = async (body: Record<string, unknown>, failMessage: string) => {
+    if (!flow) return
+    setSubmitting(true)
+    setNetworkError(null)
+    try {
+      const { data } = await createBrowserClient().updateRegistrationFlow({
+        flow: flow.id,
+        updateRegistrationFlowBody: { method: 'code', traits: traitsBody(), csrf_token: getCsrfToken(flow), ...body } as unknown as UpdateRegistrationFlowBody,
+      })
+      if (handleContinueWith(data, flow.return_to || returnTo)) return
+      fetchFlow(flow.id)
+    } catch (err: unknown) {
+      applyNav(resolveKratosError(err, errorNavOptions('registration', flowContext(flow), failMessage)), {
+        setFlow: () => fetchFlow(flow.id),
+        refetch: () => fetchFlow(flow.id),
+        setError: setNetworkError,
+      })
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  // Sending and resending the code create nothing, so no hook runs and no token is spent there.
+  const onSendCode = () => submitCode({}, 'Could not send the code. Try again.')
+  const onResendCode = () => submitCode({ resend: 'code' }, 'Could not send a new code. Try again.')
+
+  // Typing the code creates the account: Kratos hands this submit to jinbe's hook, which checks the token.
+  const onSubmitCode = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const token = bot.widget ? bot.token : null
+    try {
+      await submitCode({ code, ...(token ? { transient_payload: { captcha_token: token } } : {}) }, 'Code rejected. Please try again.')
+    } finally {
+      if (bot.widget) bot.reset()
+      setCode('')
+    }
+  }
+
   const setTrait = (name: string, value: string) => setTraits((p) => ({ ...p, [name]: value }))
 
   const onSubmit = async (e: React.FormEvent) => {
@@ -110,17 +172,7 @@ function RegisterPageContent() {
     setSubmitting(true)
     setNetworkError(null)
     try {
-      const traitsObj: Record<string, unknown> = {}
-      for (const [k, v] of Object.entries(traits)) {
-        if (!k.startsWith('traits.')) continue
-        const path = k.slice('traits.'.length).split('.')
-        let cur = traitsObj
-        for (let i = 0; i < path.length - 1; i++) {
-          cur[path[i]] = (cur[path[i]] as Record<string, unknown>) || {}
-          cur = cur[path[i]] as Record<string, unknown>
-        }
-        cur[path[path.length - 1]] = v
-      }
+      const traitsObj = traitsBody()
 
       // If the flow already has a password group, submit method=password directly
       // with traits + password. Otherwise submit method=profile to advance Kratos
@@ -198,8 +250,14 @@ function RegisterPageContent() {
       signInHref={signInUrl(flow?.return_to || returnTo || null)}
       onSubmit={onSubmit}
       onSubmitOidc={onSubmitOidc}
-      botCheck={hasPassword ? bot.widget : null}
-      botCheckPending={hasPassword && bot.pending}
+      botCheck={hasPassword || codeStage === 'enter' ? bot.widget : null}
+      botCheckPending={(hasPassword || codeStage === 'enter') && bot.pending}
+      codeStage={codeStage}
+      code={code}
+      setCode={setCode}
+      onSendCode={onSendCode}
+      onSubmitCode={onSubmitCode}
+      onResendCode={onResendCode}
       signUpLimit={protection ? signUpLimitText(protection) : null}
     />
   )

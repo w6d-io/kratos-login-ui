@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { env } from 'next-runtime-env'
 import type { RegistrationFlow } from '@ory/client'
 import { Field } from '@/components/ui/Field'
+import { OtpInput } from '@/components/ui/OtpInput'
 import { PasswordInput } from '@/components/ui/PasswordInput'
 import { Checkbox } from '@/components/ui/Checkbox'
 import { Icons } from '@/components/ui/Icons'
@@ -13,11 +14,12 @@ import { WebAuthnTriggerForm } from '@/components/ui/OryWebAuthn'
 import { useBranding } from '@/components/ui/Branding'
 import { FlowCard } from '@/components/flow/FlowCard'
 import { FlowMessages } from '@/components/flow/FlowMessages'
-import { AccountChip, MethodContent, PasswordRules } from '@/components/flow/Parts'
+import { AccountChip, MethodContent, PasswordRules, ResendCode } from '@/components/flow/Parts'
 import { fieldLabel } from '@/components/flow/labels'
 import { rememberMethod } from '@/components/flow/prefs'
 import { getInputs, type FlowField, type OidcProvider } from '@/lib/kratos-flow'
 import type { FlowBanner } from '@/lib/flow-messages'
+import { isBotCheckRefusal } from '@/lib/sign-in-protection'
 
 export function humanizeTrait(name: string): string {
   // 'traits.email' → 'Email', 'traits.name.first' → 'First'
@@ -65,6 +67,13 @@ export function RegisterView(p: {
   botCheckPending?: boolean
   /** "Sign-ups are limited to @corp.io addresses." — said under the email field before anyone types. */
   signUpLimit?: string | null
+  /** Email-code sign-up (Kratos `code` method): offered (`send`), or a code was sent (`enter`). */
+  codeStage?: 'none' | 'send' | 'enter'
+  code?: string
+  setCode?: (v: string) => void
+  onSendCode?: () => void | Promise<void>
+  onSubmitCode?: (e: FormEvent) => void | Promise<void>
+  onResendCode?: () => void | Promise<unknown>
 }) {
   const { flow } = p
   const { branding } = useBranding()
@@ -73,17 +82,24 @@ export function RegisterView(p: {
   const pwError = getInputs(flow, 'password').find((f) => f.name === 'password')?.errors[0]
   const twoStep = p.hasProfileStep && !p.hasPassword
   // Second screen of the two-step flow: the details are already captured (echoed back hidden).
-  const credentialStep = (p.hasPassword || p.hasPasskey) && p.traitFields.length > 0 && p.traitFields.every((f) => f.type === 'hidden')
+  const offersCode = p.codeStage === 'send'
+  const credentialStep = (p.hasPassword || p.hasPasskey || offersCode) && p.traitFields.length > 0 && p.traitFields.every((f) => f.type === 'hidden')
   const restart = `/register${p.returnTo ? `?return_to=${encodeURIComponent(p.returnTo)}` : ''}`
-  const showForm = p.hasPassword || p.hasProfileStep || p.traitFields.length > 0
+  // Only an email code on offer (no password): its button is the whole form.
+  const codeOnly = credentialStep && offersCode && !p.hasPassword
+  const showForm = !codeOnly && (p.hasPassword || p.hasProfileStep || p.traitFields.length > 0)
   const blockedByTerms = p.hasPassword && !p.accepted
   const blockedByBotCheck = !blockedByTerms && !!p.botCheckPending
+
+  if (p.codeStage === 'enter') return <RegisterCodeStep {...p} email={email} restart={restart} />
 
   return (
     <FlowCard
       title={credentialStep ? 'Choose how you’ll sign in' : 'Create your account'}
       subtitle={credentialStep
-        ? 'Last step. Set a password, or use a passkey so there’s nothing to remember.'
+        ? codeOnly
+          ? 'Last step. We’ll email you a 6-digit code to confirm the address and create the account.'
+          : 'Last step. Set a password, or use a passkey so there’s nothing to remember.'
         : branding
         ? `One ${appName} account gets you into ${branding.displayName} and the other apps you’re given.`
         : `It takes about a minute. You’ll use this ${appName} account to sign in.`}
@@ -185,6 +201,22 @@ export function RegisterView(p: {
         </form>
       )}
 
+      {credentialStep && offersCode && (
+        <>
+          {!codeOnly && <div className="divider-text">or skip the password</div>}
+          <button
+            type="button"
+            className={codeOnly ? 'btn btn-primary btn-block' : 'method-btn'}
+            disabled={p.submitting}
+            onClick={() => { rememberMethod('code'); void p.onSendCode?.() }}
+          >
+            {codeOnly
+              ? (p.submitting ? <><span className="spinner" aria-hidden /> Sending…</> : 'Email me a code')
+              : <MethodContent icon={<Icons.Mail size={18} />} title="Email me a code instead" hint="Confirm the address with a 6-digit code — nothing to remember" />}
+          </button>
+        </>
+      )}
+
       {/* Passkey sign-up. In the two-step flow Kratos only exposes the trigger on the credentials
           step, where the chosen traits are echoed back as hidden `default`-group inputs; local
           edits override them so the ceremony POST carries what's on screen. */}
@@ -217,6 +249,60 @@ export function SignUpClosedView({ message, signInHref }: { message: string; sig
       footer={<>Already have an account? <Link href={signInHref}>Sign in</Link></>}
     >
       <Link href={signInHref} className="btn btn-primary btn-block">Go to sign in</Link>
+    </FlowCard>
+  )
+}
+
+/**
+ * The code was sent: type it to create the account. This submit is the one Kratos hands to jinbe's
+ * hook, so the bot check sits here — not on sending, which creates nothing.
+ */
+function RegisterCodeStep(p: Parameters<typeof RegisterView>[0] & { email: string; restart: string }) {
+  const code = p.code ?? ''
+  const codeError = getInputs(p.flow, 'code').find((f) => f.name === 'code')?.errors[0]
+  const blockedByTerms = !p.accepted
+  const blockedByBotCheck = !blockedByTerms && !!p.botCheckPending
+  // Kratos spends the code on a submit the hook refused (verified on v26.2.0): only a new one works.
+  const codeSpent = isBotCheckRefusal(p.flow)
+  return (
+    <FlowCard
+      icon={<Icons.Inbox size={20} />}
+      title="Check your email"
+      subtitle={<>Enter the 6-digit code we sent to <strong>{p.email || 'your email'}</strong> to create your account.</>}
+      footer={<Link href={p.restart}>Use a different email</Link>}
+    >
+      <FlowMessages banners={p.banners} networkError={p.networkError} quiet />
+      {codeSpent && <p className="small muted" role="status" style={{ margin: '0 0 var(--space-4)' }}>That code can’t be used again. Send a new code below, complete the bot check, then enter the new code.</p>}
+      {/* A full code submits the form by itself (OtpInput) — only once nothing else is missing, since
+          that path does not go through the disabled button. */}
+      <form onSubmit={(e) => { if (blockedByTerms || blockedByBotCheck) { e.preventDefault(); return } return p.onSubmitCode?.(e) }} noValidate>
+        <Field label="6-digit code" htmlFor="reg-code" error={codeError} hint="It can take a minute to arrive. Not there? Check spam or promotions.">
+          <OtpInput id="reg-code" value={code} onChange={(v) => p.setCode?.(v)} autoSubmit={!blockedByTerms && !blockedByBotCheck} />
+        </Field>
+        <div className="mt-4">
+          <Checkbox checked={p.accepted} onChange={p.setAccepted}>
+            I agree to the terms of service and the privacy policy.
+          </Checkbox>
+        </div>
+        {p.botCheck && <div className="mt-4">{p.botCheck}</div>}
+        <div className="form-actions">
+          <button
+            type="submit"
+            className="btn btn-primary btn-block"
+            disabled={p.submitting || code.length !== 6 || blockedByTerms || blockedByBotCheck}
+            aria-describedby={blockedByTerms ? 'reg-code-terms-hint' : blockedByBotCheck ? 'reg-code-bot-hint' : undefined}
+          >
+            {p.submitting ? <><span className="spinner" aria-hidden /> Creating account…</> : 'Create account'}
+          </button>
+          {blockedByTerms && <p id="reg-code-terms-hint" className="small muted text-center" style={{ margin: 0 }}>Tick the box above to continue.</p>}
+          {blockedByBotCheck && <p id="reg-code-bot-hint" className="small muted text-center" style={{ margin: 0 }}>Complete the bot check above to continue.</p>}
+        </div>
+      </form>
+      {p.onResendCode && (
+        <div className="mt-4">
+          <ResendCode onResend={p.onResendCode} cooldownKey={`reg-code:${p.flow.id}`} />
+        </div>
+      )}
     </FlowCard>
   )
 }
