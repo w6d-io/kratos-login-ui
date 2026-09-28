@@ -125,7 +125,15 @@ export function captchaHeaders(token: string | null | undefined): { headers: Rec
   return safe ? { headers: { [CAPTCHA_TOKEN_HEADER]: safe } } : undefined
 }
 
-export type GateRefusalId = 'captcha_missing' | 'captcha_invalid' | 'captcha_unavailable' | 'rate_limited'
+export type GateRefusalId =
+  | 'captcha_missing'
+  | 'captcha_invalid'
+  | 'captcha_unavailable'
+  | 'rate_limited'
+  | 'registration_closed'
+  | 'registration_not_allowed'
+  | 'registration_disposable'
+  | 'settings_unavailable'
 
 export interface GateRefusal {
   id: GateRefusalId
@@ -139,18 +147,37 @@ const GATE_TEXT: Record<GateRefusalId, string> = {
   captcha_invalid: 'The bot check did not pass or has expired. Please complete it again.',
   captcha_unavailable: 'The bot check is unavailable right now. Please try again in a minute.',
   rate_limited: 'Too many codes were requested. Please wait a few minutes and try again.',
+  registration_closed: 'Sign-ups are closed. Ask an administrator to create your account.',
+  registration_not_allowed: 'Sign-ups are limited to invited addresses. Ask an administrator for an account.',
+  registration_disposable: 'This email provider cannot be used to sign up. Use your work or personal address.',
+  settings_unavailable: 'Sign-up is unavailable right now. Please try again in a minute.',
+}
+
+/** The status each refusal comes with: a Kratos error reusing an id under another status is not ours. */
+const GATE_STATUS: Record<GateRefusalId, number> = {
+  captcha_missing: 403,
+  captcha_invalid: 403,
+  captcha_unavailable: 403,
+  rate_limited: 429,
+  registration_closed: 403,
+  registration_not_allowed: 403,
+  registration_disposable: 403,
+  settings_unavailable: 503,
 }
 
 /**
- * The gateway's own refusal (403 bot check, 429 too many codes) — not a Kratos flow, so it carries no
- * `ui`. null for anything else. `status` guards against a Kratos error that happens to reuse an id.
+ * The gateway's own refusal — 403 bot check or a code sign-up the registration policy forbids (checked
+ * before Kratos emails the code), 429 too many codes, 503 sign-up settings unreadable. Not a Kratos
+ * flow, so it carries no `ui`. null for anything else. `status` guards against a Kratos error that
+ * happens to reuse an id. The token was spent either way (the bot check runs first); the pages ask
+ * for a fresh one after every submit.
  */
 export function gateRefusal(body: unknown, status?: number): GateRefusal | null {
-  if (status !== undefined && status !== 403 && status !== 429) return null
   const e = (body as { error?: Record<string, unknown> } | null)?.error
   if (!e || typeof e !== 'object') return null
   const id = e.id as GateRefusalId
-  if (!(id in GATE_TEXT)) return null
+  if (!Object.hasOwn(GATE_TEXT, id)) return null
+  if (status !== undefined && status !== GATE_STATUS[id]) return null
   const message = typeof e.message === 'string' && e.message.trim() && e.message.length <= 300 ? e.message : GATE_TEXT[id]
   const retry = Number(e.retry_after)
   return id === 'rate_limited' && Number.isFinite(retry) && retry > 0 ? { id, message, retryAfter: Math.ceil(retry) } : { id, message }

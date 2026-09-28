@@ -91,6 +91,20 @@ describe('gateRefusal', () => {
       .toEqual({ id: 'rate_limited', message: 'Too many codes. Wait 12 minutes.', retryAfter: 701 })
     expect(gateRefusal(body({ id: 'rate_limited', retry_after: 'soon' }), 429)).toEqual({ id: 'rate_limited', message: expect.stringMatching(/Too many codes/) })
   })
+  it('reads a code sign-up the registration policy refuses, and unreadable sign-up settings', () => {
+    expect(gateRefusal(body({ id: 'registration_not_allowed', code: 403, message: 'Sign-ups are limited to @example.com addresses.' }), 403))
+      .toEqual({ id: 'registration_not_allowed', message: 'Sign-ups are limited to @example.com addresses.' })
+    expect(gateRefusal(body({ id: 'registration_closed', code: 403 }), 403)?.message).toMatch(/closed/)
+    expect(gateRefusal(body({ id: 'registration_disposable', code: 403 }), 403)?.message).toMatch(/email provider/)
+    expect(gateRefusal(body({ id: 'settings_unavailable', code: 503, message: 'Sign-up is unavailable right now. Please try again in a minute.' }), 503))
+      .toEqual({ id: 'settings_unavailable', message: 'Sign-up is unavailable right now. Please try again in a minute.' })
+  })
+  it('each id only under its own status', () => {
+    expect(gateRefusal(body({ id: 'settings_unavailable' }), 403)).toBeNull()
+    expect(gateRefusal(body({ id: 'registration_closed' }), 503)).toBeNull()
+    expect(gateRefusal(body({ id: 'rate_limited' }), 403)).toBeNull()
+    expect(gateRefusal(body({ id: 'toString' }), 403)).toBeNull()
+  })
   it('ignores Kratos errors and other statuses', () => {
     expect(gateRefusal(body({ id: 'security_csrf_violation', code: 403 }), 403)).toBeNull()
     expect(gateRefusal(body({ id: 'captcha_missing' }), 400)).toBeNull()

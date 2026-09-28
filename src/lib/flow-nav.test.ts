@@ -168,6 +168,10 @@ describe('resolveKratosError', () => {
       .toEqual({ kind: 'error', message: 'Please complete the bot check, then try again.' })
     expect(resolveKratosError(kerr(429, { error: { id: 'rate_limited', code: 429, message: 'Too many codes were requested. Please wait 15 minutes.', retry_after: 900 } }), opts()))
       .toEqual({ kind: 'error', message: 'Too many codes were requested. Please wait 15 minutes.' })
+    expect(resolveKratosError(kerr(403, { error: { id: 'registration_not_allowed', code: 403, message: 'Sign-ups are limited to @example.com addresses.' } }), opts({ kind: 'registration' })))
+      .toEqual({ kind: 'error', message: 'Sign-ups are limited to @example.com addresses.' })
+    expect(resolveKratosError(kerr(503, { error: { id: 'settings_unavailable', code: 503, message: 'Sign-up is unavailable right now. Please try again in a minute.' } }), opts({ kind: 'registration' })))
+      .toEqual({ kind: 'error', message: 'Sign-up is unavailable right now. Please try again in a minute.' })
     // A Kratos 403 is still routed as before.
     expect(resolveKratosError(kerr(403, { error: { id: 'security_csrf_violation' } }), opts()).kind).toBe('redirect')
   })
