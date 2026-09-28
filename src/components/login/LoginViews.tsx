@@ -1,6 +1,6 @@
 'use client'
 
-import { useSyncExternalStore, type FormEvent } from 'react'
+import { useSyncExternalStore, type FormEvent, type ReactNode } from 'react'
 import Link from 'next/link'
 import { env } from 'next-runtime-env'
 import type { LoginFlow } from '@ory/client'
@@ -31,6 +31,22 @@ interface Base {
   setStep: (s: LoginStep) => void
 }
 
+/** The bot check on a first-factor form: the widget, and whether the submit waits for it. */
+interface BotCheckSlot {
+  botCheck?: ReactNode
+  botCheckPending?: boolean
+}
+
+function BotCheckBlock({ slot, id }: { slot: BotCheckSlot; id: string }) {
+  if (!slot.botCheck) return null
+  return (
+    <>
+      <div className="mt-4">{slot.botCheck}</div>
+      {slot.botCheckPending && <p id={id} className="small muted" style={{ margin: 'var(--space-2) 0 0' }}>Complete the bot check to continue.</p>}
+    </>
+  )
+}
+
 function withQuery(path: string, returnTo: string) {
   return `${path}${returnTo ? `?return_to=${encodeURIComponent(returnTo)}` : ''}`
 }
@@ -58,7 +74,9 @@ function switchAccountHref(returnTo: string) {
 
 // ── First factor: SSO, passkey, email + password ──────────────────────────────────────────────
 
-export function PasswordView(p: Base & {
+export function PasswordView(p: Base & BotCheckSlot & {
+  /** False when sign-up is closed: no "Create an account" link to a page that would refuse. */
+  signUpOpen?: boolean
   identifier: string
   setIdentifier: (v: string) => void
   password: string
@@ -160,8 +178,9 @@ export function PasswordView(p: Base & {
           required
         />
       </Field>
+      <BotCheckBlock slot={p} id="login-bot-hint" />
       <div className="form-actions">
-        <button type="submit" className="btn btn-primary btn-block" disabled={p.submitting}>
+        <button type="submit" className="btn btn-primary btn-block" disabled={p.submitting || !!p.botCheckPending} aria-describedby={p.botCheckPending ? 'login-bot-hint' : undefined}>
           <Busy busy={p.submitting} idle={refreshing ? 'Confirm' : 'Sign in'} working={refreshing ? 'Confirming…' : 'Signing in…'} />
         </button>
       </div>
@@ -181,7 +200,7 @@ export function PasswordView(p: Base & {
     <FlowCard
       title={title}
       subtitle={subtitle}
-      footer={!refreshing && (
+      footer={!refreshing && p.signUpOpen !== false && (
         <>New here? <Link href={withQuery('/register', p.returnTo)}>Create an account</Link></>
       )}
     >
@@ -213,7 +232,7 @@ export function PasswordView(p: Base & {
 
 // ── Passwordless: email a one-time code ─────────────────────────────────────────────────────────
 
-export function CodeView(p: Base & {
+export function CodeView(p: Base & BotCheckSlot & {
   identifier: string
   setIdentifier: (v: string) => void
   code: string
@@ -242,8 +261,10 @@ export function CodeView(p: Base & {
           <Field label="Sign-in code" htmlFor="login-code" error={codeField?.errors?.[0]} hint="It can take a minute to arrive. Not there? Check spam or promotions.">
             <OtpInput id="login-code" value={p.code} onChange={p.setCode} />
           </Field>
+          {/* The email code finishes the sign-in, so the hook checks the token on this submit. */}
+          <BotCheckBlock slot={p} id="login-code-bot-hint" />
           <div className="form-actions">
-            <button type="submit" className="btn btn-primary btn-block" disabled={p.submitting || p.code.length !== 6}>
+            <button type="submit" className="btn btn-primary btn-block" disabled={p.submitting || p.code.length !== 6 || !!p.botCheckPending} aria-describedby={p.botCheckPending ? 'login-code-bot-hint' : undefined}>
               <Busy busy={p.submitting} idle="Sign in" working="Checking code…" />
             </button>
           </div>

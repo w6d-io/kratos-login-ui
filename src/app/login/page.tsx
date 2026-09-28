@@ -30,6 +30,7 @@ import {
   handleContinueWith,
 } from '@/lib/kratos-flow'
 import { extractFlowBanners, detectUrlBanner } from '@/lib/flow-messages'
+import { useBotCheck, useSignInProtection } from '@/components/ui/BotCheck'
 import { CodeView, LookupView, PasswordView, TotpView, WebAuthnView, type LoginStep } from '@/components/login/LoginViews'
 
 type Step = LoginStep
@@ -71,6 +72,8 @@ function LoginPageContent() {
   ), [urlCtx, flowId])
   const returnTo = flow ? (flow.return_to || '') : urlReturnTo
   const fetchingRef = useRef(false)
+  const protection = useSignInProtection()
+  const bot = useBotCheck('login', protection)
 
   const showFlow = useCallback((data: LoginFlow) => {
     rememberFlowContext(data.id, flowContext(data), sessionStore())
@@ -233,9 +236,20 @@ function LoginPageContent() {
     }
   }
 
+  /**
+   * The bot-check token for a first-factor submit, in transient_payload: jinbe's interrupting Kratos
+   * hook checks it before the session is issued. One token per submit, so a fresh one is asked after.
+   */
+  const withBotCheck = <T extends object>(body: T): T => {
+    if (!bot.widget) return body
+    const token = bot.token
+    bot.reset()
+    return token ? { ...body, transient_payload: { captcha_token: token } } : body
+  }
+
   const onSubmitPassword = (e: React.FormEvent) => {
     e.preventDefault()
-    void submit({ method: 'password', identifier, password, csrf_token: getCsrfToken(flow) }, 'Sign-in failed. Please try again.')
+    void submit(withBotCheck({ method: 'password', identifier, password, csrf_token: getCsrfToken(flow) }) as UpdateLoginFlowBody, 'Sign-in failed. Please try again.')
   }
 
   const onSubmitCodeRequest = (e: React.FormEvent) => {
@@ -252,7 +266,7 @@ function LoginPageContent() {
     // state; on `sent_email` Kratos re-emits the identifier node as a
     // hidden input with an empty value, so we can't recover it from the flow.
     const idValue = identifier || getInput(flow, 'identifier')?.value || ''
-    void submit({ method: 'code', identifier: idValue, code, csrf_token: getCsrfToken(flow) } as UpdateLoginFlowBody, 'Code rejected. Please try again.')
+    void submit(withBotCheck({ method: 'code', identifier: idValue, code, csrf_token: getCsrfToken(flow) }) as UpdateLoginFlowBody, 'Code rejected. Please try again.')
   }
 
   const onSubmitOidc = (provider: string) => {
@@ -350,6 +364,8 @@ function LoginPageContent() {
         onSubmitCodeVerify={onSubmitCodeVerify}
         onResend={resendCode}
         onChangeEmail={changeEmail}
+        botCheck={bot.widget}
+        botCheckPending={bot.pending}
       />
     )
   }
@@ -385,6 +401,9 @@ function LoginPageContent() {
       returnTo={returnTo}
       onSubmitPassword={onSubmitPassword}
       onSubmitOidc={onSubmitOidc}
+      botCheck={flow.requested_aal === 'aal2' ? null : bot.widget}
+      botCheckPending={flow.requested_aal !== 'aal2' && bot.pending}
+      signUpOpen={protection?.registration.mode !== 'closed'}
     />
   )
 }

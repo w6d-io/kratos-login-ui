@@ -1,0 +1,109 @@
+import { describe, it, expect, vi } from 'vitest'
+import {
+  botCheckFor,
+  gatewayTokenCookie,
+  isBotCheckRefusal,
+  parseSignInProtection,
+  signUpLimitText,
+  UNKNOWN_PROTECTION,
+} from './sign-in-protection'
+import { createProtectionService } from './sign-in-protection-server'
+
+const jinbeAnswer = {
+  captcha: {
+    provider: 'turnstile',
+    configured: true,
+    siteKey: '1x00000000000000000000AA',
+    scriptUrl: 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit',
+    flows: { registration: true, login: false, recovery: true, verification: false },
+  },
+  registration: { mode: 'allowlist', domains: ['corp.io', 'lab.io'] },
+}
+
+describe('parseSignInProtection', () => {
+  it('reads jinbe\'s answer', () => {
+    const p = parseSignInProtection(jinbeAnswer)
+    expect(p.captcha).toEqual({
+      provider: 'turnstile', siteKey: '1x00000000000000000000AA', scriptUrl: jinbeAnswer.captcha.scriptUrl,
+      flows: { registration: true, login: false, recovery: true, verification: false },
+    })
+    expect(p.registration).toEqual({ mode: 'allowlist', domains: ['corp.io', 'lab.io'] })
+    expect(botCheckFor(p, 'registration')).not.toBeNull()
+    expect(botCheckFor(p, 'login')).toBeNull()
+  })
+
+  it('is idempotent: the browser re-parses what the API route already parsed', () => {
+    const once = parseSignInProtection(jinbeAnswer)
+    expect(parseSignInProtection(JSON.parse(JSON.stringify(once)))).toEqual(once)
+  })
+
+  it('loads the widget only from its provider\'s own host, over https', () => {
+    for (const scriptUrl of ['https://evil.example/api.js', 'http://challenges.cloudflare.com/turnstile/v0/api.js', 'javascript:alert(1)']) {
+      expect(parseSignInProtection({ ...jinbeAnswer, captcha: { ...jinbeAnswer.captcha, scriptUrl } }).captcha).toBeNull()
+    }
+    expect(parseSignInProtection({ ...jinbeAnswer, captcha: { ...jinbeAnswer.captcha, provider: 'hcaptcha' } }).captcha).toBeNull()
+  })
+
+  it('no configured provider, garbage, or nothing: no widget and open sign-up (the server still decides)', () => {
+    expect(parseSignInProtection({ ...jinbeAnswer, captcha: { ...jinbeAnswer.captcha, configured: false } }).captcha).toBeNull()
+    expect(parseSignInProtection(null)).toEqual(UNKNOWN_PROTECTION)
+    expect(parseSignInProtection({ registration: { mode: 'weird', domains: ['<b>x</b>', 'ok.io'] } }).registration).toEqual({ mode: 'open', domains: [] })
+    expect(parseSignInProtection({ registration: { mode: 'allowlist', domains: ['<b>x</b>', 'ok.io'] } }).registration.domains).toEqual(['ok.io'])
+  })
+})
+
+describe('signUpLimitText', () => {
+  const reg = (registration: object) => ({ captcha: null, registration } as Parameters<typeof signUpLimitText>[0])
+  it('says who may sign up', () => {
+    expect(signUpLimitText(reg({ mode: 'open', domains: [] }))).toBeNull()
+    expect(signUpLimitText(reg({ mode: 'closed', domains: [] }))).toBe('Sign-ups are closed. Ask an administrator to create your account.')
+    expect(signUpLimitText(reg({ mode: 'allowlist', domains: ['corp.io'] }))).toBe('Sign-ups are limited to @corp.io addresses.')
+    expect(signUpLimitText(reg({ mode: 'allowlist', domains: ['a.io', 'b.io', 'c.io'] }))).toBe('Sign-ups are limited to @a.io, @b.io and @c.io addresses.')
+    expect(signUpLimitText(reg({ mode: 'allowlist', domains: [] }))).toMatch(/invited addresses/)
+  })
+})
+
+describe('gateway token cookie', () => {
+  it('is scoped to the self-service paths, short-lived, strict, and cannot be injected into', () => {
+    expect(gatewayTokenCookie('0.abc-DEF_1.x', true)).toBe('stl_kcap=0.abc-DEF_1.x; Path=/self-service; Max-Age=600; SameSite=Strict; Secure')
+    expect(gatewayTokenCookie('a; Domain=evil.io', false)).toBe('stl_kcap=aDomainevil.io; Path=/self-service; Max-Age=600; SameSite=Strict')
+  })
+})
+
+describe('isBotCheckRefusal', () => {
+  it('spots the guard\'s bot-check messages only', () => {
+    expect(isBotCheckRefusal({ ui: { messages: [{ id: 4000901 }] } })).toBe(true)
+    expect(isBotCheckRefusal({ ui: { messages: [{ id: 4000902 }] } })).toBe(true)
+    expect(isBotCheckRefusal({ ui: { messages: [{ id: 4000006 }] } })).toBe(false)
+    expect(isBotCheckRefusal(null)).toBe(false)
+  })
+})
+
+describe('protection service (server side)', () => {
+  it('caches a good answer, caches a failure shorter, and never throws', async () => {
+    let t = 0
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify(jinbeAnswer), { status: 200 })) as unknown as typeof fetch
+    const current = createProtectionService({ baseUrl: 'http://jinbe:8080/', fetchImpl, now: () => t, ttlMs: 10_000, errorTtlMs: 1_000 })
+    expect((await current()).registration.mode).toBe('allowlist')
+    t = 9_000
+    await current()
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    expect((fetchImpl as unknown as { mock: { calls: [string][] } }).mock.calls[0][0]).toBe('http://jinbe:8080/api/public/sign-in-protection')
+
+    const down = vi.fn(async () => { throw new Error('ECONNREFUSED') }) as unknown as typeof fetch
+    const failing = createProtectionService({ baseUrl: 'http://jinbe:8080', fetchImpl: down, now: () => t, errorTtlMs: 1_000 })
+    expect(await failing()).toEqual(UNKNOWN_PROTECTION)
+    t += 500
+    await failing()
+    expect(down).toHaveBeenCalledTimes(1)
+    t += 1_000
+    await failing()
+    expect(down).toHaveBeenCalledTimes(2)
+  })
+
+  it('without JINBE_PUBLIC_URL: unknown, no call', async () => {
+    const fetchImpl = vi.fn() as unknown as typeof fetch
+    expect(await createProtectionService({ baseUrl: '', fetchImpl })()).toEqual(UNKNOWN_PROTECTION)
+    expect(fetchImpl).not.toHaveBeenCalled()
+  })
+})

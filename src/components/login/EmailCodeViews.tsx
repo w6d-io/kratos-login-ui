@@ -22,6 +22,9 @@ interface Shared {
   email: string
   setEmail: (v: string) => void
   onSubmitRequest: Submit
+  /** Bot check before an email goes out (request and resend); null when this flow asks for none. */
+  botCheck?: ReactNode
+  botCheckPending?: boolean
 }
 
 const backToSignIn = <Link href="/login" className="back"><Icons.ArrowLeft size={12} /> Back to sign in</Link>
@@ -59,8 +62,9 @@ function EmailRequest({ p, flow, icon, title, subtitle, cta, idPrefix }: {
             required
           />
         </Field>
+        {p.botCheck && <div className="mt-4">{p.botCheck}</div>}
         <div className="form-actions">
-          <button type="submit" className="btn btn-primary btn-block" disabled={p.submitting || !p.email}>
+          <button type="submit" className="btn btn-primary btn-block" disabled={p.submitting || !p.email || !!p.botCheckPending}>
             <Busy busy={p.submitting} idle={cta} working="Sending…" />
           </button>
         </div>
@@ -128,8 +132,12 @@ function Sent({ p, flow, idPrefix, subtitle, cta, code, setCode, onSubmitCode, o
       ) : (
         <CodeForm p={p} flow={flow} cta={cta} idPrefix={idPrefix} code={code} setCode={setCode} onSubmitCode={onSubmitCode} />
       )}
+      {/* Every email sent is checked, a resend included. */}
+      {p.botCheck && <div className="mt-4">{p.botCheck}</div>}
       <div className="mt-4">
-        <ResendCode onResend={onResend} cooldownKey={`${idPrefix}:${flow.id}`} label={linkSteps ? 'Resend email' : 'Resend code'} />
+        {p.botCheckPending
+          ? <p className="small muted" style={{ margin: 0 }}>Complete the bot check above to send another {linkSteps ? 'email' : 'code'}.</p>
+          : <ResendCode onResend={onResend} cooldownKey={`${idPrefix}:${flow.id}`} label={linkSteps ? 'Resend email' : 'Resend code'} />}
       </div>
     </FlowCard>
   )

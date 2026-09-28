@@ -16,6 +16,7 @@ import {
 import { extractFlowBanners } from '@/lib/flow-messages'
 import { RecoveryView } from '@/components/login/EmailCodeViews'
 import { flowContext, resolveKratosError } from '@/lib/flow-nav'
+import { setGatewayToken, useBotCheck, useSignInProtection } from '@/components/ui/BotCheck'
 import { applyNav, errorNavOptions, rememberFlowOrigin } from '@/lib/flow-nav-browser'
 
 type Stage = 'request' | 'verify'
@@ -33,6 +34,8 @@ function RecoveryPageContent() {
   const flowId = searchParams.get('flow')
   const urlReturnTo = searchParams.get('return_to') || ''
   const fetchingRef = useRef(false)
+  const protection = useSignInProtection()
+  const bot = useBotCheck('recovery', protection)
 
   const fetchFlow = useCallback((id: string) => {
     if (fetchingRef.current) return
@@ -91,6 +94,8 @@ function RecoveryPageContent() {
       const body = (method === 'code'
         ? { method: 'code', email, csrf_token: getCsrfToken(flow) }
         : { method: 'link', email, csrf_token: getCsrfToken(flow) }) as UpdateRecoveryFlowBody
+      // No Kratos hook runs when the email is sent: the gateway checks this token (cookie) instead.
+      if (bot.widget) { setGatewayToken(bot.token); bot.reset() }
       await createBrowserClient().updateRecoveryFlow({ flow: flow.id, updateRecoveryFlowBody: body })
       fetchFlow(flow.id)
     } catch (err: unknown) {
@@ -152,6 +157,8 @@ function RecoveryPageContent() {
       onSubmitCode={submitCode}
       onChangeEmail={() => { setCode(''); setStage('request') }}
       onResend={sendRequest}
+      botCheck={bot.widget}
+      botCheckPending={bot.pending}
     />
   )
 }

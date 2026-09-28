@@ -16,6 +16,7 @@ import {
 import { extractFlowBanners } from '@/lib/flow-messages'
 import { VerificationView } from '@/components/login/EmailCodeViews'
 import { flowContext, landingUrl, resolveKratosError } from '@/lib/flow-nav'
+import { setGatewayToken, useBotCheck, useSignInProtection } from '@/components/ui/BotCheck'
 import { applyNav, errorNavOptions, rememberFlowOrigin } from '@/lib/flow-nav-browser'
 
 type Stage = 'request' | 'verify' | 'success'
@@ -33,6 +34,8 @@ function VerificationPageContent() {
   const flowId = searchParams.get('flow')
   const urlReturnTo = searchParams.get('return_to') || ''
   const fetchingRef = useRef(false)
+  const protection = useSignInProtection()
+  const bot = useBotCheck('verification', protection)
 
   const fetchFlow = useCallback((id: string) => {
     if (fetchingRef.current) return
@@ -87,6 +90,8 @@ function VerificationPageContent() {
     try {
       const method = hasGroup(flow, 'code') ? 'code' : 'link'
       const body = { method, email, csrf_token: getCsrfToken(flow) } as UpdateVerificationFlowBody
+      // No Kratos hook runs when the email is sent: the gateway checks this token (cookie) instead.
+      if (bot.widget) { setGatewayToken(bot.token); bot.reset() }
       await createBrowserClient().updateVerificationFlow({ flow: flow.id, updateVerificationFlowBody: body })
       fetchFlow(flow.id)
     } catch (err: unknown) {
@@ -147,6 +152,8 @@ function VerificationPageContent() {
       onSubmitCode={submitCode}
       onChangeEmail={() => { setCode(''); setStage('request') }}
       onResend={sendRequest}
+      botCheck={bot.widget}
+      botCheckPending={bot.pending}
     />
   )
 }

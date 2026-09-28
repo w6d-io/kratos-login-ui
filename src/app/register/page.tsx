@@ -15,10 +15,12 @@ import {
   handleContinueWith,
 } from '@/lib/kratos-flow'
 import { extractFlowBanners } from '@/lib/flow-messages'
-import { RegisterView } from '@/components/login/RegisterView'
+import { RegisterView, SignUpClosedView } from '@/components/login/RegisterView'
 import { flowContext, resolveKratosError } from '@/lib/flow-nav'
 import { applyNav, errorNavOptions, rememberFlowOrigin } from '@/lib/flow-nav-browser'
 import { signInUrl } from '@/lib/access'
+import { useBotCheck, useSignInProtection } from '@/components/ui/BotCheck'
+import { signUpLimitText } from '@/lib/sign-in-protection'
 
 function RegisterPageContent() {
   const [flow, setFlow] = useState<RegistrationFlow | null>(null)
@@ -33,6 +35,8 @@ function RegisterPageContent() {
   const flowId = searchParams.get('flow')
   const returnTo = searchParams.get('return_to') || ''
   const fetchingRef = useRef(false)
+  const protection = useSignInProtection()
+  const bot = useBotCheck('registration', protection)
 
   const fetchFlow = useCallback((id: string) => {
     if (fetchingRef.current) return
@@ -121,8 +125,10 @@ function RegisterPageContent() {
       // If the flow already has a password group, submit method=password directly
       // with traits + password. Otherwise submit method=profile to advance Kratos
       // to the next step (which adds password inputs to the flow).
+      // The bot-check token rides in transient_payload: Kratos hands it to jinbe's interrupting
+      // hook before the account is stored, and never persists it.
       const body = (hasPassword
-        ? { method: 'password', password, traits: traitsObj, csrf_token: getCsrfToken(flow) }
+        ? { method: 'password', password, traits: traitsObj, csrf_token: getCsrfToken(flow), ...(bot.token ? { transient_payload: { captcha_token: bot.token } } : {}) }
         : { method: 'profile', traits: traitsObj, csrf_token: getCsrfToken(flow) }
       ) as unknown as UpdateRegistrationFlowBody
 
@@ -139,6 +145,8 @@ function RegisterPageContent() {
       })
     } finally {
       setSubmitting(false)
+      // One token, one submit.
+      if (hasPassword && bot.widget) bot.reset()
     }
   }
 
@@ -161,6 +169,10 @@ function RegisterPageContent() {
     form.appendChild(p)
     document.body.appendChild(form)
     form.submit()
+  }
+
+  if (protection?.registration.mode === 'closed') {
+    return <SignUpClosedView message={signUpLimitText(protection) ?? ''} signInHref={signInUrl(flow?.return_to || returnTo || null)} />
   }
 
   if (loading || !flow) return <Loading />
@@ -186,6 +198,9 @@ function RegisterPageContent() {
       signInHref={signInUrl(flow?.return_to || returnTo || null)}
       onSubmit={onSubmit}
       onSubmitOidc={onSubmitOidc}
+      botCheck={hasPassword ? bot.widget : null}
+      botCheckPending={hasPassword && bot.pending}
+      signUpLimit={protection ? signUpLimitText(protection) : null}
     />
   )
 }

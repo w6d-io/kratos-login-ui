@@ -1,6 +1,6 @@
 'use client'
 
-import type { FormEvent } from 'react'
+import type { FormEvent, ReactNode } from 'react'
 import Link from 'next/link'
 import { env } from 'next-runtime-env'
 import type { RegistrationFlow } from '@ory/client'
@@ -59,6 +59,12 @@ export function RegisterView(p: {
   signInHref?: string
   onSubmit: (e: FormEvent) => void | Promise<void>
   onSubmitOidc: (provider: string) => void
+  /** The bot-check widget, on the step that creates the account; null when sign-up asks for none. */
+  botCheck?: ReactNode
+  /** The check is shown and not solved yet: the submit waits for it. */
+  botCheckPending?: boolean
+  /** "Sign-ups are limited to @corp.io addresses." — said under the email field before anyone types. */
+  signUpLimit?: string | null
 }) {
   const { flow } = p
   const { branding } = useBranding()
@@ -71,6 +77,7 @@ export function RegisterView(p: {
   const restart = `/register${p.returnTo ? `?return_to=${encodeURIComponent(p.returnTo)}` : ''}`
   const showForm = p.hasPassword || p.hasProfileStep || p.traitFields.length > 0
   const blockedByTerms = p.hasPassword && !p.accepted
+  const blockedByBotCheck = !blockedByTerms && !!p.botCheckPending
 
   return (
     <FlowCard
@@ -116,7 +123,7 @@ export function RegisterView(p: {
                 optional={!f.required && !isEmail}
                 htmlFor={fieldId}
                 error={f.errors[0]}
-                hint={isEmail ? 'We’ll send a code to confirm it’s yours.' : undefined}
+                hint={isEmail ? (p.signUpLimit ? `${p.signUpLimit} We’ll send a code to confirm it’s yours.` : 'We’ll send a code to confirm it’s yours.') : undefined}
               >
                 <input
                   id={fieldId}
@@ -164,13 +171,16 @@ export function RegisterView(p: {
             </div>
           )}
 
+          {p.botCheck && <div className="mt-4">{p.botCheck}</div>}
+
           <div className="form-actions">
-            <button type="submit" className="btn btn-primary btn-block" disabled={p.submitting || blockedByTerms} aria-describedby={blockedByTerms ? 'reg-terms-hint' : undefined}>
+            <button type="submit" className="btn btn-primary btn-block" disabled={p.submitting || blockedByTerms || blockedByBotCheck} aria-describedby={blockedByTerms ? 'reg-terms-hint' : blockedByBotCheck ? 'reg-bot-hint' : undefined}>
               {p.submitting
                 ? <><span className="spinner" aria-hidden /> {p.hasPassword ? 'Creating account…' : 'Continuing…'}</>
                 : p.hasPassword ? 'Create account' : 'Continue'}
             </button>
             {blockedByTerms && <p id="reg-terms-hint" className="small muted text-center" style={{ margin: 0 }}>Tick the box above to continue.</p>}
+            {blockedByBotCheck && <p id="reg-bot-hint" className="small muted text-center" style={{ margin: 0 }}>Complete the bot check above to continue.</p>}
           </div>
         </form>
       )}
@@ -193,6 +203,20 @@ export function RegisterView(p: {
           </WebAuthnTriggerForm>
         </>
       )}
+    </FlowCard>
+  )
+}
+
+/** Sign-up is closed (console: Settings → Sign-in protection): say so instead of a form Kratos would refuse. */
+export function SignUpClosedView({ message, signInHref }: { message: string; signInHref: string }) {
+  return (
+    <FlowCard
+      icon={<Icons.Lock size={20} />}
+      title="Sign-ups are closed"
+      subtitle={message}
+      footer={<>Already have an account? <Link href={signInHref}>Sign in</Link></>}
+    >
+      <Link href={signInHref} className="btn btn-primary btn-block">Go to sign in</Link>
     </FlowCard>
   )
 }
