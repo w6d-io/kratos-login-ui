@@ -31,6 +31,7 @@ import {
 } from '@/lib/kratos-flow'
 import { extractFlowBanners, detectUrlBanner } from '@/lib/flow-messages'
 import { useBotCheck, useSignInProtection } from '@/components/ui/BotCheck'
+import { captchaHeaders } from '@/lib/sign-in-protection'
 import { CodeView, LookupView, PasswordView, TotpView, WebAuthnView, type LoginStep } from '@/components/login/LoginViews'
 
 type Step = LoginStep
@@ -210,12 +211,12 @@ function LoginPageContent() {
   const methods = useMemo(() => availableMethods(flow), [flow])
 
   /** Submit one method; success, step-up and every Kratos error route through flow-nav. */
-  const submit = async (body: UpdateLoginFlowBody, failMessage: string) => {
+  const submit = async (body: UpdateLoginFlowBody, failMessage: string, token: string | null = null) => {
     if (!flow) return
     setSubmitting(true)
     setNetworkError(null)
     try {
-      const { data } = await createBrowserClient().updateLoginFlow({ flow: flow.id, updateLoginFlowBody: body })
+      const { data } = await createBrowserClient().updateLoginFlow({ flow: flow.id, updateLoginFlowBody: body }, captchaHeaders(token))
       // First factor done with an aal1 session: ask for the second factor
       // now if the identity has one, keeping this flow's return_to.
       if (data.session?.authenticator_assurance_level === 'aal1' && flow.requested_aal !== 'aal2' && !flow.refresh) {
@@ -238,25 +239,31 @@ function LoginPageContent() {
     }
   }
 
+  // A second factor is not where bots get in: no check on an aal2 flow.
+  const firstFactor = flow?.requested_aal !== 'aal2'
+
   /**
-   * The bot-check token for a first-factor submit, in transient_payload: jinbe's interrupting Kratos
-   * hook checks it before the session is issued. One token per submit, so a fresh one is asked after.
+   * The bot-check token for a first-factor submit. In the X-Captcha-Token header, which the gateway
+   * checks (with the provider) before Kratos emails a code; and in transient_payload, for jinbe's
+   * interrupting Kratos hook before the session is issued. One token per submit, so a fresh one is
+   * asked after.
    */
-  const withBotCheck = <T extends object>(body: T): T => {
-    if (!bot.widget) return body
-    const token = bot.token
-    bot.reset()
-    return token ? { ...body, transient_payload: { captcha_token: token } } : body
+  const withBotCheck = <T extends object>(body: T): [T, string | null] => {
+    const token = firstFactor ? bot.take() : null
+    return [token ? { ...body, transient_payload: { captcha_token: token } } : body, token]
   }
 
   const onSubmitPassword = (e: React.FormEvent) => {
     e.preventDefault()
-    void submit(withBotCheck({ method: 'password', identifier, password, csrf_token: getCsrfToken(flow) }) as UpdateLoginFlowBody, 'Sign-in failed. Please try again.')
+    const [body, token] = withBotCheck({ method: 'password', identifier, password, csrf_token: getCsrfToken(flow) })
+    void submit(body as UpdateLoginFlowBody, 'Sign-in failed. Please try again.', token)
   }
 
+  // This submit sends the email: the gateway refuses it without a good token.
   const onSubmitCodeRequest = (e: React.FormEvent) => {
     e.preventDefault()
-    void submit({ method: 'code', identifier, csrf_token: getCsrfToken(flow) } as UpdateLoginFlowBody, 'Could not send sign-in code. Try again.')
+    const [body, token] = withBotCheck({ method: 'code', identifier, csrf_token: getCsrfToken(flow) })
+    void submit(body as UpdateLoginFlowBody, 'Could not send sign-in code. Try again.', token)
   }
 
   const onSubmitCodeVerify = (e: React.FormEvent) => {
@@ -268,7 +275,8 @@ function LoginPageContent() {
     // state; on `sent_email` Kratos re-emits the identifier node as a
     // hidden input with an empty value, so we can't recover it from the flow.
     const idValue = identifier || getInput(flow, 'identifier')?.value || ''
-    void submit(withBotCheck({ method: 'code', identifier: idValue, code, csrf_token: getCsrfToken(flow) }) as UpdateLoginFlowBody, 'Code rejected. Please try again.')
+    const [body, token] = withBotCheck({ method: 'code', identifier: idValue, code, csrf_token: getCsrfToken(flow) })
+    void submit(body as UpdateLoginFlowBody, 'Code rejected. Please try again.', token)
   }
 
   const onSubmitOidc = (provider: string) => {
@@ -313,11 +321,13 @@ function LoginPageContent() {
     if (!flow) return
     const idValue = identifier || getInput(flow, 'identifier')?.value || ''
     setNetworkError(null)
+    // A resend is another email: the gateway checks a fresh token.
+    const [body, token] = withBotCheck({ method: 'code', identifier: idValue, resend: 'code', csrf_token: getCsrfToken(flow) })
     try {
       await createBrowserClient().updateLoginFlow({
         flow: flow.id,
-        updateLoginFlowBody: { method: 'code', identifier: idValue, resend: 'code', csrf_token: getCsrfToken(flow) } as UpdateLoginFlowBody,
-      })
+        updateLoginFlowBody: body as UpdateLoginFlowBody,
+      }, captchaHeaders(token))
       fetchFlow(flow.id)
     } catch (err: unknown) {
       // Kratos answers a successful resend with 400 + the flow (message 1010014).
@@ -366,8 +376,8 @@ function LoginPageContent() {
         onSubmitCodeVerify={onSubmitCodeVerify}
         onResend={resendCode}
         onChangeEmail={changeEmail}
-        botCheck={bot.widget}
-        botCheckPending={bot.pending}
+        botCheck={firstFactor ? bot.widget : null}
+        botCheckPending={firstFactor && bot.pending}
       />
     )
   }
@@ -403,8 +413,8 @@ function LoginPageContent() {
       returnTo={returnTo}
       onSubmitPassword={onSubmitPassword}
       onSubmitOidc={onSubmitOidc}
-      botCheck={flow.requested_aal === 'aal2' ? null : bot.widget}
-      botCheckPending={flow.requested_aal !== 'aal2' && bot.pending}
+      botCheck={firstFactor ? bot.widget : null}
+      botCheckPending={firstFactor && bot.pending}
       signUpOpen={protection?.registration.mode !== 'closed'}
     />
   )

@@ -163,6 +163,18 @@ function opts(over: Partial<ErrorNavOptions> = {}): ErrorNavOptions {
 const kerr = (status: number, data: unknown) => ({ response: { status, data } })
 
 describe('resolveKratosError', () => {
+  it('shows the gateway refusal (bot check, too many codes) and stays on the flow', () => {
+    expect(resolveKratosError(kerr(403, { error: { id: 'captcha_missing', code: 403, message: 'Please complete the bot check, then try again.' } }), opts()))
+      .toEqual({ kind: 'error', message: 'Please complete the bot check, then try again.' })
+    expect(resolveKratosError(kerr(429, { error: { id: 'rate_limited', code: 429, message: 'Too many codes were requested. Please wait 15 minutes.', retry_after: 900 } }), opts()))
+      .toEqual({ kind: 'error', message: 'Too many codes were requested. Please wait 15 minutes.' })
+    expect(resolveKratosError(kerr(403, { error: { id: 'registration_not_allowed', code: 403, message: 'Sign-ups are limited to @example.com addresses.' } }), opts({ kind: 'registration' })))
+      .toEqual({ kind: 'error', message: 'Sign-ups are limited to @example.com addresses.' })
+    expect(resolveKratosError(kerr(503, { error: { id: 'settings_unavailable', code: 503, message: 'Sign-up is unavailable right now. Please try again in a minute.' } }), opts({ kind: 'registration' })))
+      .toEqual({ kind: 'error', message: 'Sign-up is unavailable right now. Please try again in a minute.' })
+    // A Kratos 403 is still routed as before.
+    expect(resolveKratosError(kerr(403, { error: { id: 'security_csrf_violation' } }), opts()).kind).toBe('redirect')
+  })
   it('410 with a replacement flow goes to that flow', () => {
     const a = resolveKratosError(kerr(410, { error: { id: 'self_service_flow_expired' }, use_flow_id: '680522a8-c661-4c99-9f8f-632409c2d2d7' }), opts({ ctx: { returnTo: 'https://app.example.com/page' } }))
     expect(a).toEqual({ kind: 'redirect', to: '/login?flow=680522a8-c661-4c99-9f8f-632409c2d2d7' })

@@ -1,5 +1,6 @@
 import { config, isReturnUrlAllowed } from './config'
 import { initFlowUrl } from './ory'
+import { gateRefusal } from './sign-in-protection'
 
 /**
  * One place that turns Kratos answers into navigation (see docs/FLOWS.md).
@@ -236,6 +237,11 @@ export function resolveKratosError(err: unknown, o: ErrorNavOptions): NavAction 
   const id = data.error?.id
   const redirectTo = safeKratosRedirect(data.redirect_browser_to, o.origin, o.kratosBase)
   const authReturnTo = o.authReturnTo ?? o.ctx.returnTo
+
+  // The gateway refused before Kratos saw the submit (bot check, too many codes): the flow is
+  // untouched, so say why and stay on it. The page asks the widget for a fresh token after every submit.
+  const gate = gateRefusal(r.data, status)
+  if (gate) return { kind: 'error', message: gate.message }
 
   const restart = (): NavAction => {
     if (!o.mayRestart()) {

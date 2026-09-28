@@ -3,8 +3,9 @@
  * key), and whether people may sign up. Read from jinbe's `GET /api/public/sign-in-protection`
  * through /api/sign-in-protection.
  *
- * None of this is the enforcement. jinbe's interrupting Kratos web_hook refuses a sign-up or sign-in
- * without a good token, and a sign-up the policy does not allow, whatever this page shows — so when
+ * None of this is the enforcement. The gateway (jinbe, before Kratos) refuses a submit that would
+ * email a code or link without a good token, jinbe's interrupting Kratos web_hook refuses a sign-up
+ * or sign-in without one, and a sign-up the policy does not allow, whatever this page shows — so when
  * the settings cannot be read, the page draws the plain forms and lets the server answer.
  */
 
@@ -108,15 +109,78 @@ export function signUpLimitText(p: SignInProtection): string | null {
 }
 
 /**
- * Recovery and verification cannot be interrupted by a Kratos hook, so their token travels in a
- * cookie the gateway reads (Oathkeeper redacts cookies from its logs, never custom headers). Scoped
- * to Kratos' self-service paths and short-lived; the gateway spends it through jinbe.
+ * Every email a flow sends is checked BEFORE Kratos acts: the gateway hands POST /self-service/* to
+ * jinbe, which asks the provider for this header's token when the submit would send a code or link.
+ * Same-origin requests, so a custom header needs no CORS allowance. Sent on every submit that emails
+ * a code or link, and on the login / sign-up submits that finish (harmless where the gate does not
+ * need it), which also keep the token in transient_payload for Kratos' after-hook.
  */
-export const GATEWAY_TOKEN_COOKIE = 'stl_kcap'
+export const CAPTCHA_TOKEN_HEADER = 'X-Captcha-Token'
 
-export function gatewayTokenCookie(token: string, secure: boolean): string {
-  const safe = token.replace(/[^A-Za-z0-9_.-]/g, '')
-  return `${GATEWAY_TOKEN_COOKIE}=${safe}; Path=/self-service; Max-Age=600; SameSite=Strict${secure ? '; Secure' : ''}`
+/** Request options (axios) carrying the token, or undefined when there is none. */
+export function captchaHeaders(token: string | null | undefined): { headers: Record<string, string> } | undefined {
+  if (!token) return undefined
+  // Provider tokens are URL-safe; anything else cannot be a header value anyway.
+  const safe = token.replace(/[^A-Za-z0-9_.:-]/g, '')
+  return safe ? { headers: { [CAPTCHA_TOKEN_HEADER]: safe } } : undefined
+}
+
+export type GateRefusalId =
+  | 'captcha_missing'
+  | 'captcha_invalid'
+  | 'captcha_unavailable'
+  | 'rate_limited'
+  | 'registration_closed'
+  | 'registration_not_allowed'
+  | 'registration_disposable'
+  | 'settings_unavailable'
+
+export interface GateRefusal {
+  id: GateRefusalId
+  message: string
+  /** Seconds to wait (rate_limited). */
+  retryAfter?: number
+}
+
+const GATE_TEXT: Record<GateRefusalId, string> = {
+  captcha_missing: 'Please complete the bot check, then try again.',
+  captcha_invalid: 'The bot check did not pass or has expired. Please complete it again.',
+  captcha_unavailable: 'The bot check is unavailable right now. Please try again in a minute.',
+  rate_limited: 'Too many codes were requested. Please wait a few minutes and try again.',
+  registration_closed: 'Sign-ups are closed. Ask an administrator to create your account.',
+  registration_not_allowed: 'Sign-ups are limited to invited addresses. Ask an administrator for an account.',
+  registration_disposable: 'This email provider cannot be used to sign up. Use your work or personal address.',
+  settings_unavailable: 'Sign-up is unavailable right now. Please try again in a minute.',
+}
+
+/** The status each refusal comes with: a Kratos error reusing an id under another status is not ours. */
+const GATE_STATUS: Record<GateRefusalId, number> = {
+  captcha_missing: 403,
+  captcha_invalid: 403,
+  captcha_unavailable: 403,
+  rate_limited: 429,
+  registration_closed: 403,
+  registration_not_allowed: 403,
+  registration_disposable: 403,
+  settings_unavailable: 503,
+}
+
+/**
+ * The gateway's own refusal — 403 bot check or a code sign-up the registration policy forbids (checked
+ * before Kratos emails the code), 429 too many codes, 503 sign-up settings unreadable. Not a Kratos
+ * flow, so it carries no `ui`. null for anything else. `status` guards against a Kratos error that
+ * happens to reuse an id. The token was spent either way (the bot check runs first); the pages ask
+ * for a fresh one after every submit.
+ */
+export function gateRefusal(body: unknown, status?: number): GateRefusal | null {
+  const e = (body as { error?: Record<string, unknown> } | null)?.error
+  if (!e || typeof e !== 'object') return null
+  const id = e.id as GateRefusalId
+  if (!Object.hasOwn(GATE_TEXT, id)) return null
+  if (status !== undefined && status !== GATE_STATUS[id]) return null
+  const message = typeof e.message === 'string' && e.message.trim() && e.message.length <= 300 ? e.message : GATE_TEXT[id]
+  const retry = Number(e.retry_after)
+  return id === 'rate_limited' && Number.isFinite(retry) && retry > 0 ? { id, message, retryAfter: Math.ceil(retry) } : { id, message }
 }
 
 /** A Kratos error body (or flow) carrying one of the guard's bot-check refusals: time for a fresh token. */

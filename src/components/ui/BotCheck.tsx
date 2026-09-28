@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   botCheckFor,
-  gatewayTokenCookie,
   parseSignInProtection,
   UNKNOWN_PROTECTION,
   type BotCheckFlow,
@@ -136,24 +135,31 @@ export function BotCheckWidget({ check, action, onToken }: {
 
 /**
  * Everything a flow page needs: the widget to place in its form (null when this flow asks for no
- * check), the current token, whether a submit must wait for one, and `reset()` after each submit.
+ * check), the current token, whether a submit must wait for one, `reset()` after each submit, and
+ * `take()` — the token for this submit (null when the flow asks for none), asking for a fresh one.
  */
 export function useBotCheck(flow: BotCheckFlow, protection: SignInProtection | null): {
   widget: ReactNode
   token: string | null
   pending: boolean
   reset: () => void
+  take: () => string | null
 } {
   const check = protection ? botCheckFor(protection, flow) : null
   const [token, setToken] = useState<string | null>(null)
   const [generation, setGeneration] = useState(0)
-  const reset = useCallback(() => { setToken(null); setGeneration((g) => g + 1) }, [])
-  const widget = check ? <BotCheckWidget key={generation} check={check} action={flow} onToken={setToken} /> : null
-  return { widget, token, pending: !!check && !token, reset }
-}
-
-/** Hands the token to the gateway (recovery, verification): see gatewayTokenCookie. */
-export function setGatewayToken(token: string | null): void {
-  if (!token || typeof document === 'undefined') return
-  document.cookie = gatewayTokenCookie(token, window.location.protocol === 'https:')
+  // Submits run from closures of an earlier render (the sign-up code is sent after the details
+  // step): read the latest token, not the one that render saw.
+  const latest = useRef<string | null>(null)
+  const onToken = useCallback((t: string | null) => { latest.current = t; setToken(t) }, [])
+  const reset = useCallback(() => { latest.current = null; setToken(null); setGeneration((g) => g + 1) }, [])
+  const enabled = !!check
+  const take = useCallback(() => {
+    if (!enabled) return null
+    const t = latest.current
+    reset()
+    return t
+  }, [enabled, reset])
+  const widget = check ? <BotCheckWidget key={generation} check={check} action={flow} onToken={onToken} /> : null
+  return { widget, token, pending: !!check && !token, reset, take }
 }

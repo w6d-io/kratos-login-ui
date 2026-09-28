@@ -271,7 +271,10 @@ export function CodeView(p: Base & BotCheckSlot & {
           </div>
         </form>
         <div className="mt-4">
-          <ResendCode onResend={p.onResend} cooldownKey={`login-code:${flow.id}`} />
+          {/* A resend is another email: it waits for the bot check like the first one. */}
+          {p.botCheckPending
+            ? <p className="small muted" style={{ margin: 0 }}>Complete the bot check above to send another code.</p>
+            : <ResendCode onResend={p.onResend} cooldownKey={`login-code:${flow.id}`} />}
         </div>
       </FlowCard>
     )
@@ -285,7 +288,7 @@ export function CodeView(p: Base & BotCheckSlot & {
       footer={<Link href={withQuery('/login', flow.return_to || '')} className="back"><Icons.ArrowLeft size={12} /> All sign-in options</Link>}
     >
       <FlowMessages banners={p.banners} networkError={p.networkError} />
-      <form onSubmit={p.onSubmitCodeRequest} noValidate>
+      <form onSubmit={(e) => { if (p.botCheckPending) { e.preventDefault(); return } return p.onSubmitCodeRequest(e) }} noValidate>
         <Field label={fieldLabel(idField?.label, 'Email')} htmlFor="login-id" error={idField?.errors?.[0]}>
           <input
             id="login-id"
@@ -303,8 +306,10 @@ export function CodeView(p: Base & BotCheckSlot & {
             required
           />
         </Field>
+        {/* This submit sends the email, so the gateway checks the token here, before Kratos acts. */}
+        <BotCheckBlock slot={p} id="login-code-request-bot-hint" />
         <div className="form-actions">
-          <button type="submit" className="btn btn-primary btn-block" disabled={p.submitting || !p.identifier}>
+          <button type="submit" className="btn btn-primary btn-block" disabled={p.submitting || !p.identifier || !!p.botCheckPending} aria-describedby={p.botCheckPending ? 'login-code-request-bot-hint' : undefined}>
             <Busy busy={p.submitting} idle="Email me a code" working="Sending…" />
           </button>
         </div>

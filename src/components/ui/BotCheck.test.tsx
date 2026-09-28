@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import type { RegistrationFlow } from '@ory/client'
-import { useBotCheck, setGatewayToken } from './BotCheck'
+import { useBotCheck } from './BotCheck'
 import { parseSignInProtection, type SignInProtection } from '@/lib/sign-in-protection'
 import { RegisterView, SignUpClosedView } from '@/components/login/RegisterView'
 
@@ -32,6 +32,7 @@ beforeEach(() => {
 })
 afterEach(() => vi.restoreAllMocks())
 
+let taken: Array<string | null> = []
 function Probe({ p, flow }: { p: SignInProtection | null; flow: 'registration' | 'login' }) {
   const bot = useBotCheck(flow, p)
   return (
@@ -39,6 +40,7 @@ function Probe({ p, flow }: { p: SignInProtection | null; flow: 'registration' |
       {bot.widget}
       <span data-testid="state">{bot.widget ? (bot.pending ? 'pending' : `token:${bot.token}`) : 'none'}</span>
       <button onClick={bot.reset}>reset</button>
+      <button onClick={() => { taken.push(bot.take()) }}>take</button>
     </div>
   )
 }
@@ -77,18 +79,25 @@ describe('useBotCheck', () => {
   })
 })
 
-describe('gateway token', () => {
-  it('lands in the stl_kcap cookie (scoped to /self-service, so read back through the setter)', () => {
-    const written: string[] = []
-    const d = Object.getOwnPropertyDescriptor(Document.prototype, 'cookie')!
-    Object.defineProperty(document, 'cookie', { configurable: true, get: () => '', set: (v: string) => { written.push(v) } })
-    try {
-      setGatewayToken('tok.1')
-      setGatewayToken(null)
-    } finally {
-      Object.defineProperty(document, 'cookie', d)
-    }
-    expect(written).toEqual(['stl_kcap=tok.1; Path=/self-service; Max-Age=600; SameSite=Strict'])
+describe('take', () => {
+  it('hands the current token once and asks the widget for a fresh one', async () => {
+    taken = []
+    render(<Probe p={protection({ login: true })} flow="login" />)
+    await waitFor(() => expect(rendered).toHaveLength(1))
+    act(() => rendered[0].callback('tok-1'))
+    act(() => screen.getByText('take').click())
+    expect(taken).toEqual(['tok-1'])
+    expect(screen.getByTestId('state').textContent).toBe('pending')
+    await waitFor(() => expect(rendered).toHaveLength(2))
+    act(() => screen.getByText('take').click())
+    expect(taken).toEqual(['tok-1', null])
+  })
+
+  it('is null for a flow that asks for no check', () => {
+    taken = []
+    render(<Probe p={protection({ registration: true })} flow="login" />)
+    act(() => screen.getByText('take').click())
+    expect(taken).toEqual([null])
   })
 })
 
