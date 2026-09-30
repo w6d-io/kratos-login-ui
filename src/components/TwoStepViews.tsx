@@ -14,6 +14,8 @@ interface TwoStepSetupViewProps {
   /** The enrolment rows (authenticator app, security key), from the settings components. */
   children: ReactNode
   signOutHref: string
+  /** An app is signing in to the account (MCP): the reason is the app, not an administrator role. */
+  forApp?: boolean
 }
 
 /**
@@ -21,17 +23,22 @@ interface TwoStepSetupViewProps {
  * factor and the destination for an account that must have a second factor
  * and has none. There is no skip — the way out is signing out.
  */
-export function TwoStepSetupView({ email, destinationName, error, children, signOutHref }: TwoStepSetupViewProps) {
+export function TwoStepSetupView({ email, destinationName, error, children, signOutHref, forApp }: TwoStepSetupViewProps) {
   return (
     <FlowCard
       icon={<Icons.Shield size={20} />}
-      title="Set up two-step sign-in to continue"
-      subtitle={
+      title={forApp ? 'Set up two-step sign-in to connect the app' : 'Set up two-step sign-in to continue'}
+      subtitle={forApp ? (
+        <>
+          Before an app can act as you, your account needs a second step after your password.
+          It takes about two minutes, once — then you’ll go on to choose what the app may do.
+        </>
+      ) : (
         <>
           Your account has administrator access, so it has to be protected by a second step after your password.
           It takes about two minutes, once — then you’ll go on to {destinationName ?? 'where you were headed'}.
         </>
-      }
+      )}
       footer={
         <a href={signOutHref} className="btn btn-ghost btn-block">
           <Icons.LogOut size={16} /> Sign out instead

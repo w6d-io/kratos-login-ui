@@ -281,3 +281,11 @@ describe('resolveContinueWith', () => {
     })
   })
 })
+
+describe('gateUrl', () => {
+  it('keeps must_enrol across the gate\'s own round trips', async () => {
+    const { gateUrl } = await import('./flow-nav')
+    expect(gateUrl('https://a.test/x', 'https://auth.test')).toBe('https://auth.test/two-step?return_to=https%3A%2F%2Fa.test%2Fx')
+    expect(gateUrl('https://a.test/x', 'https://auth.test', true)).toBe('https://auth.test/two-step?return_to=https%3A%2F%2Fa.test%2Fx&must_enrol=1')
+  })
+})

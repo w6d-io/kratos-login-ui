@@ -50,3 +50,11 @@ describe('TwoStepUncheckedView', () => {
     expect(screen.queryByText(/continue anyway|skip/i)).toBeNull()
   })
 })
+
+describe('TwoStepSetupView for an app', () => {
+  it('gives the app as the reason, not an administrator role', () => {
+    render(<TwoStepSetupView email={null} destinationName={null} signOutHref="/logout" forApp><div /></TwoStepSetupView>)
+    expect(screen.getByRole('heading').textContent).toBe('Set up two-step sign-in to connect the app')
+    expect(screen.queryByText(/administrator access/i)).toBeNull()
+  })
+})

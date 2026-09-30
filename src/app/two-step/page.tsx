@@ -30,9 +30,11 @@ import { TwoStepSetupView, TwoStepStuckView, TwoStepUncheckedView } from '@/comp
 function TwoStepPageContent() {
   const searchParams = useSearchParams()
   const rawReturn = searchParams.get('return_to')
+  // An app signing in (jinbe's MCP login step) needs a second factor on any account; only ever stricter.
+  const mustEnrol = searchParams.get('must_enrol') === '1'
   const [origin, setOrigin] = useState('')
   const destination = origin ? destinationUrl(rawReturn, origin) : null
-  const selfUrl = destination ? gateUrl(destination, origin) : ''
+  const selfUrl = destination ? gateUrl(destination, origin, mustEnrol) : ''
   useBrandingReturnTo(destination)
   const { branding } = useBranding()
   const [view, setView] = useState<'loading' | 'enrol' | 'stuck' | 'unchecked'>('loading')
@@ -69,6 +71,7 @@ function TwoStepPageContent() {
       selfUrl,
       mayStepUp: () => stepUpGuard(sessionStore()),
       mayContinueUnchecked: () => blindPassGuard(destination, sessionStore()),
+      mustEnrol,
     }).then((o) => {
       running.current = false
       // Reached: /welcome no longer needs the remembered destination (it uses it itself).
@@ -77,7 +80,7 @@ function TwoStepPageContent() {
       else if (o.kind === 'enrol') loadFlow()
       else setView(o.kind)
     })
-  }, [destination, selfUrl, origin, loadFlow])
+  }, [destination, selfUrl, origin, loadFlow, mustEnrol])
 
   useEffect(() => { run() }, [run])
 
@@ -93,6 +96,7 @@ function TwoStepPageContent() {
     <TwoStepSetupView
       email={typeof email === 'string' ? email : null}
       destinationName={branding?.displayName ?? null}
+      forApp={mustEnrol}
       error={error}
       signOutHref={signOutHref}
     >

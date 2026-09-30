@@ -119,9 +119,9 @@ export function destinationUrl(returnTo: string | null | undefined, origin: stri
   return `${origin}${WELCOME_PATH}`
 }
 
-/** The gate for a destination already validated by destinationUrl. */
-export function gateUrl(destination: string, origin: string): string {
-  return `${origin}${TWO_STEP_PATH}?return_to=${encodeURIComponent(destination)}`
+/** The gate for a destination already validated by destinationUrl (`mustEnrol`: kept across its own round trips). */
+export function gateUrl(destination: string, origin: string, mustEnrol = false): string {
+  return `${origin}${TWO_STEP_PATH}?return_to=${encodeURIComponent(destination)}${mustEnrol ? '&must_enrol=1' : ''}`
 }
 
 /**

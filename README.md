@@ -112,6 +112,15 @@ See [`.env.example`](./.env.example) for a copy-pasteable template.
 
 > **Security note**: `*` is fine for dev but lets any site send a user through your auth UI back to itself. Always set a specific allow-list in production.
 
+### App sign-in (OAuth2, Hydra login/consent)
+
+Hydra's `urls.login` is `https://<this UI>/oauth2/login`, `urls.consent` is `/oauth2/consent` and `urls.error` is `/error`. jinbe answers both steps; this UI only forwards the visitor's Kratos session cookies to it and follows redirects to this UI, Hydra or Kratos — nothing else. A refused sign-in shows `/oauth2/refused`, whose "Return to your app" follows Hydra's reject URL kept in an HttpOnly cookie.
+
+| Variable | Required | Default | Description |
+|---|:---:|---|---|
+| `JINBE_PUBLIC_URL` | ✅ | _(none)_ | jinbe's in-cluster URL (server-only), also used by the two-step gate and the site picker. |
+| `HYDRA_PUBLIC_URL` | ✅ | _(none)_ | Hydra's public URL, its issuer (server-only). The only origin besides this UI and Kratos the `/oauth2/*` steps may send the browser to. Example: `https://hydra.example.com/` |
+
 ### Branding
 
 | Variable | Default | Description |

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { evaluatePassword, tooSimilarToIdentifier } from './password-rules'
 import { cooldownUntil, formatCountdown, lastMethod, rememberMethod, secondsLeft, setCooldownUntil } from './prefs'
 import { describeDevice, relativeTime } from './device'
-import { describeFlowError } from './flow-error'
+import { describeFlowError, describeOAuthError } from './flow-error'
 import { fieldLabel } from './labels'
 
 describe('evaluatePassword', () => {
@@ -138,5 +138,14 @@ describe('fieldLabel', () => {
     expect(fieldLabel('email address', 'x')).toBe('Email')
     expect(fieldLabel('Name', 'x')).toBe('Name')
     expect(fieldLabel(undefined, 'Fallback')).toBe('Fallback')
+  })
+})
+
+describe('describeOAuthError', () => {
+  it('names Hydra errors in words and always points back to the app', () => {
+    expect(describeOAuthError('access_denied').title).toMatch(/wasn’t given access/)
+    expect(describeOAuthError('invalid_client').body).toMatch(/add it again/)
+    expect(describeOAuthError('request_forbidden').title).toMatch(/has ended/)
+    expect(describeOAuthError('whatever').body).toMatch(/from the app/)
   })
 })
