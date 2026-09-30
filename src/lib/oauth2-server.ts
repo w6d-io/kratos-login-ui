@@ -95,8 +95,12 @@ function classifyError(a: { status: number; body: unknown }, origins: RedirectOr
   if (a.status === 404 || a.status === 410) return { kind: 'expired' }
   if (a.status === 400 || a.status === 403 || a.status === 409) {
     const reason = errorReason(a.body)
-    if (reason === 'challenge_expired' || reason === 'not_found' || reason === 'request_expired') return { kind: 'expired' }
-    return { kind: 'refused', reason: refusalReason(reason), to: allowedRedirect(field(a.body, 'redirect_to', 'to'), origins) }
+    // A garbled or used challenge: the request has ended.
+    if (reason === 'invalid_request' || reason === 'challenge_unknown') return { kind: 'expired' }
+    // Only a known refusal (wrong_account, client_bound_elsewhere…) is shown as one; bad_origin, no_scopes,
+    // protected_actions_unavailable are ours to retry, never "you can't sign in".
+    const known = refusalReason(reason)
+    if (known !== 'unknown') return { kind: 'refused', reason: known, to: allowedRedirect(field(a.body, 'redirect_to', 'to'), origins) }
   }
   return { kind: 'unavailable' }
 }

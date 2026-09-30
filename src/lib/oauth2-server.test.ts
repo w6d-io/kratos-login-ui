@@ -42,7 +42,16 @@ describe('parseLoginHop', () => {
     expect(parseLoginHop({ status: 404, body: null }, origins)).toEqual({ kind: 'expired' })
     expect(parseLoginHop({ status: 410, body: null }, origins)).toEqual({ kind: 'expired' })
     expect(parseLoginHop({ status: 403, body: { error: 'forbidden', details: { reason: 'not_mcp_client' } } }, origins)).toEqual({ kind: 'refused', reason: 'not_mcp_client', to: null })
+    expect(parseLoginHop({ status: 403, body: { error: 'wrong_account' } }, origins)).toEqual({ kind: 'refused', reason: 'wrong_account', to: null })
     expect(parseLoginHop({ status: 200, body: { action: 'dance' } }, origins)).toEqual({ kind: 'unavailable' })
+  })
+  it('jinbe\'s own error codes: invalid_request / challenge_unknown ended; bad_origin, no_scopes, unavailable retried', () => {
+    expect(parseLoginHop({ status: 400, body: { error: 'invalid_request' } }, origins)).toEqual({ kind: 'expired' })
+    expect(parseLoginHop({ status: 404, body: { error: 'challenge_unknown' } }, origins)).toEqual({ kind: 'expired' })
+    expect(parseLoginHop({ status: 403, body: { error: 'bad_origin' } }, origins)).toEqual({ kind: 'unavailable' })
+    expect(parseLoginHop({ status: 400, body: { error: 'no_scopes' } }, origins)).toEqual({ kind: 'unavailable' })
+    expect(parseLoginHop({ status: 400, body: { error: 'protected_actions_unavailable' } }, origins)).toEqual({ kind: 'unavailable' })
+    expect(parseLoginHop({ status: 503, body: { error: 'unavailable' } }, origins)).toEqual({ kind: 'unavailable' })
   })
 })
 
@@ -95,7 +104,7 @@ describe('fetchConsent', () => {
 
 describe('submitConsent', () => {
   it('posts the decision with the browser Origin and follows the Hydra redirect', async () => {
-    const f = reply(200, { redirect_to: 'https://hydra.example.com/oauth2/auth?consent_verifier=v' })
+    const f = reply(200, { action: 'redirect', to: 'https://hydra.example.com/oauth2/auth?consent_verifier=v' })
     const r = await submitConsent({ ...opts(f), origin: 'https://auth.example.com' }, 'C', { decision: 'allow', mode: 'chosen', scopes: ['sites:read'], protectedActions: false })
     expect(r.result).toEqual({ kind: 'redirect', to: 'https://hydra.example.com/oauth2/auth?consent_verifier=v' })
     const [url, init] = f.mock.calls[0] as unknown as [string, RequestInit]
