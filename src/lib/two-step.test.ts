@@ -104,3 +104,11 @@ describe('second-factor server client', () => {
     expect(await fetchSecondFactor({ baseUrl: 'http://jinbe', cookieHeader: '_ga=x' })).toEqual({ kind: 'unauthenticated' })
   })
 })
+
+describe('resolveGate — an app signing in (must_enrol)', () => {
+  it('any account without a second factor enrols; with one at aal1 steps up; at aal2 continues', async () => {
+    expect(await resolveGate({ ...deps(st(false, false)), mustEnrol: true })).toEqual({ kind: 'enrol' })
+    expect((await resolveGate({ ...deps(st(false, true)), mustEnrol: true })).kind).toBe('stepup')
+    expect(await resolveGate({ ...deps(st(false, true, 'aal2')), mustEnrol: true })).toEqual({ kind: 'continue', to: DEST })
+  })
+})

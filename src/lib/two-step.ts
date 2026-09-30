@@ -40,6 +40,8 @@ export interface GateDeps {
   mayStepUp: () => boolean
   /** Loop guard for continuing without an answer (see blindPassGuard). */
   mayContinueUnchecked: () => boolean
+  /** The destination itself needs a second factor, whatever the account (an app signing in: `must_enrol=1`). */
+  mustEnrol?: boolean
 }
 
 export async function resolveGate(d: GateDeps): Promise<GateOutcome> {
@@ -51,7 +53,7 @@ export async function resolveGate(d: GateDeps): Promise<GateOutcome> {
   }
   if (s.kind === 'unauthenticated') return { kind: 'signin', to: `/login?return_to=${encodeURIComponent(d.destination)}` }
   if (s.kind === 'unavailable') return d.mayContinueUnchecked() ? { kind: 'continue', to: d.destination } : { kind: 'unchecked' }
-  if (!s.required || s.aal === 'aal2') return { kind: 'continue', to: d.destination }
+  if ((!s.required && !d.mustEnrol) || s.aal === 'aal2') return { kind: 'continue', to: d.destination }
   if (!s.enrolled) return { kind: 'enrol' }
   return d.mayStepUp() ? { kind: 'stepup', to: d.stepUpUrl(d.selfUrl) } : { kind: 'stuck' }
 }

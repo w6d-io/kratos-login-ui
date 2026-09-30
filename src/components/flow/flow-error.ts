@@ -81,3 +81,27 @@ export function describeFlowError(e: RawFlowError | null | undefined): FriendlyE
     action: 'restart',
   }
 }
+
+/**
+ * Hydra's OAuth2 errors (`urls.error`: /error?error=&error_description=), for an app signing in.
+ * The way forward is always the app: its request is over, so it has to start again.
+ */
+export function describeOAuthError(code: string): { title: string; body: string } {
+  switch (code) {
+    case 'access_denied':
+      return { title: 'The app wasn’t given access', body: 'The sign-in was denied, so nothing was shared with the app. Start again from the app if that was a mistake.' }
+    case 'invalid_scope':
+      return { title: 'The app asked for permissions it can’t have', body: 'Check that the app is up to date and configured for this platform, then sign in again from it.' }
+    case 'invalid_client':
+    case 'unauthorized_client':
+    case 'invalid_redirect_uri':
+      return { title: 'This app isn’t registered correctly', body: 'Its registration is unknown or doesn’t match. Remove the server from the app and add it again so it registers afresh.' }
+    case 'login_required':
+    case 'consent_required':
+    case 'request_forbidden':
+    case 'invalid_request':
+      return { title: 'This sign-in request has ended', body: 'It expired, was already used, or was changed on the way. Start signing in again from the app.' }
+    default:
+      return { title: 'The app couldn’t sign in', body: 'Something went wrong while signing the app in. Start again from the app; if it keeps happening, contact support with the details below.' }
+  }
+}
