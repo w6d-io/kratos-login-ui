@@ -116,6 +116,8 @@ See [`.env.example`](./.env.example) for a copy-pasteable template.
 
 Hydra's `urls.login` is `https://<this UI>/oauth2/login`, `urls.consent` is `/oauth2/consent` and `urls.error` is `/error`. jinbe answers both steps; this UI only forwards the visitor's Kratos session cookies to it and follows redirects to this UI, Hydra or Kratos — nothing else. A refused sign-in shows `/oauth2/refused`, whose "Return to your app" follows Hydra's reject URL kept in an HttpOnly cookie.
 
+`/oauth2/step-up?req=<id>` is the link an assistant hands its person when a protected action needs a fresh second factor: the page makes sure one was proven in the last 2 minutes (Kratos whoami, else the aal2 refresh login back to the link), shows which sign-in or key it refreshes and for how long, and on Confirm asks jinbe to refresh it. Every call to jinbe also carries the X-Forwarded-For this UI received, for jinbe's per-visitor rate limit.
+
 | Variable | Required | Default | Description |
 |---|:---:|---|---|
 | `JINBE_PUBLIC_URL` | ✅ | _(none)_ | jinbe's in-cluster URL (server-only), also used by the two-step gate and the site picker. |
