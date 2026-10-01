@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { StepUpConfirmView, StepUpDoneView, StepUpEndView } from './OAuthStepUpViews'
+import { StepUpConfirmView, StepUpDoneView, StepUpEndView, windowLength } from './OAuthStepUpViews'
 
 afterEach(cleanup)
 const view = { kind: 'oauth' as const, name: 'Claude Code', account: 'ada@example.com', hours: 12 }
@@ -52,5 +52,14 @@ describe('StepUpEndView', () => {
     render(<StepUpEndView kind="unavailable" onRetry={onRetry} />)
     fireEvent.click(screen.getByRole('button', { name: /try again/i }))
     expect(onRetry).toHaveBeenCalled()
+  })
+})
+
+describe('windowLength', () => {
+  it('hours, or whole days for long windows', () => {
+    expect(windowLength(1)).toBe('1 more hour')
+    expect(windowLength(12)).toBe('12 more hours')
+    expect(windowLength(36)).toBe('36 more hours')
+    expect(windowLength(720)).toBe('30 more days')
   })
 })
