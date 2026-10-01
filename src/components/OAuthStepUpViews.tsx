@@ -9,6 +9,12 @@ import type { StepUpRefusal, StepUpView } from '@/lib/oauth2-step-up'
 
 const PROTECTED = 'publishing sites, changing sign-in emails and changing groups'
 
+/** "12 more hours", or in days when whole ones (a personal key's 720 hours is "30 more days"). */
+export function windowLength(hours: number): string {
+  if (hours >= 48 && hours % 24 === 0) return `${hours / 24} more days`
+  return `${hours} more ${hours === 1 ? 'hour' : 'hours'}`
+}
+
 interface ConfirmProps {
   view: StepUpView
   busy: boolean
@@ -23,7 +29,7 @@ interface ConfirmProps {
  * confirming lets this assistant's sign-in (or key) do protected actions again for the window.
  */
 export function StepUpConfirmView({ view, busy, error, switchHref, onConfirm, onCancel }: ConfirmProps) {
-  const span = view.hours ? `for ${view.hours} more ${view.hours === 1 ? 'hour' : 'hours'}` : 'again for a while'
+  const span = view.hours ? `for ${windowLength(view.hours)}` : 'again for a while'
   return (
     <FlowCard
       icon={<Icons.ShieldCheck size={20} />}
