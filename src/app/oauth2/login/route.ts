@@ -20,7 +20,7 @@ export async function GET(req: Request) {
   const origins = redirectOrigins(req)
   const here = `/oauth2/login?login_challenge=${encodeURIComponent(challenge)}`
   const hop = await fetchLoginHop(
-    { baseUrl: jinbeBaseUrl(), cookieHeader: req.headers.get('cookie'), cookiePrefix: process.env.KRATOS_SESSION_COOKIE || undefined, origins },
+    { baseUrl: jinbeBaseUrl(), cookieHeader: req.headers.get('cookie'), cookiePrefix: process.env.KRATOS_SESSION_COOKIE || undefined, forwardedFor: req.headers.get('x-forwarded-for'), origins },
     challenge,
   )
   switch (hop.kind) {

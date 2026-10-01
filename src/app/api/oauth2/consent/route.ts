@@ -25,6 +25,7 @@ function options(req: Request) {
     baseUrl: jinbeBaseUrl(),
     cookieHeader: req.headers.get('cookie'),
     cookiePrefix: process.env.KRATOS_SESSION_COOKIE || undefined,
+    forwardedFor: req.headers.get('x-forwarded-for'),
     origins: redirectOrigins(req),
   }
 }

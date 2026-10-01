@@ -18,8 +18,8 @@ import {
  *   GET  /api/public/oauth2/login?login_challenge=
  *   GET  /api/public/oauth2/consent?consent_challenge=
  *   POST /api/public/oauth2/consent
- * Only the Kratos session cookies are forwarded (plus, on the POST, the browser's Origin,
- * which jinbe checks). Per-visitor, so never cached. Every redirect jinbe hands back is
+ * Only the Kratos session cookies are forwarded, with the X-Forwarded-For we received (jinbe's
+ * per-visitor rate limit keys on it) and, on a POST, the browser's Origin, which jinbe checks. Per-visitor, so never cached. Every redirect jinbe hands back is
  * checked against `allowedRedirect` before the browser is sent anywhere.
  */
 
@@ -27,6 +27,8 @@ export interface OAuth2ServerOptions {
   baseUrl: string
   cookieHeader: string | null
   cookiePrefix?: string
+  /** The X-Forwarded-For this UI received; jinbe decides which hops it trusts. */
+  forwardedFor?: string | null
   origins: RedirectOrigins
   fetchImpl?: typeof fetch
   timeoutMs?: number
@@ -42,7 +44,7 @@ export type LoginHop =
 
 type Answer = { status: number; body: unknown } | null
 
-async function call(o: OAuth2ServerOptions, path: string, init?: { method: 'POST'; body: unknown; origin: string | null }): Promise<Answer | 'unauthenticated'> {
+export async function call(o: Omit<OAuth2ServerOptions, 'origins'>, path: string, init?: { method: 'POST'; body: unknown; origin: string | null }): Promise<Answer | 'unauthenticated'> {
   const base = o.baseUrl.replace(/\/+$/, '')
   if (!base) return null
   const cookie = kratosSessionCookies(o.cookieHeader, o.cookiePrefix)
@@ -51,6 +53,7 @@ async function call(o: OAuth2ServerOptions, path: string, init?: { method: 'POST
   const timer = setTimeout(() => ctl.abort(), o.timeoutMs ?? 5000)
   try {
     const headers: Record<string, string> = { accept: 'application/json', cookie }
+    if (o.forwardedFor) headers['x-forwarded-for'] = o.forwardedFor.slice(0, 512)
     if (init) {
       headers['content-type'] = 'application/json'
       if (init.origin) headers.origin = init.origin
@@ -77,7 +80,7 @@ async function call(o: OAuth2ServerOptions, path: string, init?: { method: 'POST
   }
 }
 
-function field(body: unknown, ...keys: string[]): unknown {
+export function field(body: unknown, ...keys: string[]): unknown {
   if (!body || typeof body !== 'object') return undefined
   const b = body as Record<string, unknown>
   for (const k of keys) if (b[k] !== undefined) return b[k]
@@ -85,7 +88,7 @@ function field(body: unknown, ...keys: string[]): unknown {
 }
 
 /** jinbe's error bodies carry the reason as `reason`, `error` or `code`, sometimes under `details`. */
-function errorReason(body: unknown): unknown {
+export function errorReason(body: unknown): unknown {
   return field(body, 'reason') ?? field(field(body, 'details'), 'reason') ?? field(body, 'error') ?? field(body, 'code')
 }
 
@@ -123,14 +126,14 @@ export async function fetchLoginHop(o: OAuth2ServerOptions, challenge: string): 
 const SCOPE = /^[a-z0-9][a-z0-9_.:-]{0,127}$/i
 const MAX_SCOPES = 500
 
-function text(v: unknown, max: number): string | null {
+export function text(v: unknown, max: number): string | null {
   if (typeof v !== 'string') return null
   // Printable only: a registered name is attacker-chosen text.
   const t = v.replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g, '').trim()
   return t ? t.slice(0, max) : null
 }
 
-function isoDate(v: unknown): string | null {
+export function isoDate(v: unknown): string | null {
   if (typeof v !== 'string' && typeof v !== 'number') return null
   const t = new Date(v).getTime()
   return Number.isFinite(t) ? new Date(t).toISOString() : null
