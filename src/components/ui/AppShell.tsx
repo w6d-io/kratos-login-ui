@@ -5,14 +5,15 @@ import { usePathname } from 'next/navigation'
 import { env } from 'next-runtime-env'
 import { config } from '@/lib/config'
 import { HeaderBrand } from './HeaderBrand'
+import { BrandLogoProvider } from './BrandLogo'
+import type { BrandLogos } from '@/lib/brand-logo'
 import { Icons } from './Icons'
 import { BrandingProvider, SignInDomain, SiteBrand, brandingStyle, useBranding } from './Branding'
 
 interface AppShellProps {
   children: ReactNode
-  /** Install logos from LOGO_URL / LOGO_SMALL_URL (validated server-side); null → letter tile. */
-  logoUrl?: string | null
-  logoSmallUrl?: string | null
+  /** Install logos from the LOGO_* env (validated server-side); absent → letter tile. */
+  logos?: Omit<BrandLogos, 'faviconUrl'>
 }
 
 type Theme = 'light' | 'dark' | 'system'
@@ -131,39 +132,49 @@ function ThemeMenu() {
   )
 }
 
-function Shell({ children, logoUrl = null, logoSmallUrl = null }: AppShellProps) {
+function Shell({ children, logos }: AppShellProps) {
   const { branding } = useBranding()
   const appName = env('NEXT_PUBLIC_APP_NAME') || 'Acme ID'
   const wide = usePathname()?.startsWith('/settings') ?? false
   const footer = config.footer
   const links = footer.links.filter((l) => typeof l?.url === 'string' && /^(https?:\/\/|\/(?!\/))/.test(l.url))
 
+  const brandLogo = {
+    appName,
+    logoUrl: logos?.logoUrl ?? null,
+    logoDarkUrl: logos?.logoDarkUrl ?? null,
+    logoSmallUrl: logos?.logoSmallUrl ?? null,
+    logoShowsName: logos?.logoShowsName ?? true,
+  }
+
   return (
-    <div className="app" style={brandingStyle(branding)} data-branded={branding?.accent ? '' : undefined}>
-      <a href="#main" className="skip-link">Skip to content</a>
-      <header className="app-header">
-        <HeaderBrand appName={appName} logoUrl={logoUrl} logoSmallUrl={logoSmallUrl} />
-        <div className="app-header-spacer" />
-        <ThemeMenu />
-      </header>
+    <BrandLogoProvider value={brandLogo}>
+      <div className="app" style={brandingStyle(branding)} data-branded={branding?.accent ? '' : undefined}>
+        <a href="#main" className="skip-link">Skip to content</a>
+        <header className="app-header">
+          <HeaderBrand />
+          <div className="app-header-spacer" />
+          <ThemeMenu />
+        </header>
 
-      <main className="app-main" id="main">
-        <div className={`flow-column ${wide ? 'wide' : ''}`}>
-          {!wide && <SiteBrand />}
-          {children}
-          <SignInDomain appName={appName} />
-        </div>
-      </main>
+        <main className="app-main" id="main">
+          <div className={`flow-column ${wide ? 'wide' : ''}`}>
+            {!wide && <SiteBrand />}
+            {children}
+            <SignInDomain appName={appName} />
+          </div>
+        </main>
 
-      {(footer.text || links.length > 0) && (
-        <footer className="app-footer">
-          {footer.text && <span>{footer.text}</span>}
-          <span className="app-footer-spacer" />
-          {links.map((l) => (
-            <a key={l.url} href={l.url} target="_blank" rel="noopener noreferrer">{l.label}</a>
-          ))}
-        </footer>
-      )}
-    </div>
+        {(footer.text || links.length > 0) && (
+          <footer className="app-footer">
+            {footer.text && <span>{footer.text}</span>}
+            <span className="app-footer-spacer" />
+            {links.map((l) => (
+              <a key={l.url} href={l.url} target="_blank" rel="noopener noreferrer">{l.label}</a>
+            ))}
+          </footer>
+        )}
+      </div>
+    </BrandLogoProvider>
   )
 }

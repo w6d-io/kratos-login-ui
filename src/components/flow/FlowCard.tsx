@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, type ReactNode } from 'react'
+import { CardBrand, useBrandLogo } from '@/components/ui/BrandLogo'
 
 interface FlowCardProps {
   /** A small icon tile above the title — what kind of step this is at a glance. */
@@ -18,6 +19,8 @@ interface FlowCardProps {
  * land on the new step instead of wherever the old one left them.
  */
 export function FlowCard({ icon, tone = 'neutral', title, subtitle, children, footer }: FlowCardProps) {
+  // With an install logo the brand leads the card and the step icon becomes a compact mark.
+  const branded = !!useBrandLogo()?.logoUrl
   const card = useRef<HTMLDivElement>(null)
   const heading = useRef<HTMLHeadingElement>(null)
 
@@ -32,8 +35,16 @@ export function FlowCard({ icon, tone = 'neutral', title, subtitle, children, fo
   return (
     <div className="card" ref={card}>
       <div className={`card-head ${children ? '' : 'solo'}`}>
-        {icon && <div className={`card-icon ${tone === 'neutral' ? '' : tone}`} aria-hidden>{icon}</div>}
-        <h1 ref={heading} tabIndex={-1}>{title}</h1>
+        <CardBrand />
+        {icon && !branded && <div className={`card-icon ${tone === 'neutral' ? '' : tone}`} aria-hidden>{icon}</div>}
+        {icon && branded ? (
+          <div className="card-title-row">
+            <div className={`card-icon compact ${tone === 'neutral' ? '' : tone}`} aria-hidden>{icon}</div>
+            <h1 ref={heading} tabIndex={-1}>{title}</h1>
+          </div>
+        ) : (
+          <h1 ref={heading} tabIndex={-1}>{title}</h1>
+        )}
         {subtitle && <p>{subtitle}</p>}
       </div>
       {children && <div className="card-body">{children}</div>}

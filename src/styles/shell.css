@@ -148,14 +148,19 @@
 }
 .signin-domain strong { color: var(--color-text-muted); font-weight: var(--weight-medium); }
 
-/* ── Install logos (LOGO_URL / LOGO_SMALL_URL): shown as supplied, never recoloured ── */
-.brand-logo {
-  display: block;
-  height: 28px;
-  width: auto;
-  max-width: min(220px, 55vw);
-  object-fit: contain;
-}
+/* ── Install logos (LOGO_*): shown as supplied, never recoloured ─────────── */
+/* Light/dark variants are both in the markup; [data-dark] (set before paint) shows one. */
+.logo-dark { display: none; }
+[data-dark="1"] .logo-dark { display: block; }
+[data-dark="1"] .logo-light { display: none; }
+.logo-img { display: block; height: 100%; width: auto; max-width: 100%; object-fit: contain; }
+/* No dark variant: in dark mode the logo sits on a light neutral plate so dark ink stays legible. */
+.logo-plate { display: inline-flex; align-items: center; height: 100%; max-width: 100%; border-radius: var(--radius-md); }
+[data-dark="1"] .logo-plate { background: #F5F6F8; padding: 4px 8px; box-sizing: border-box; }
+
+/* Header: fixed 28px height, so the bar never shifts while the image loads. */
+.header-logo-full { display: inline-flex; align-items: center; height: 28px; max-width: min(220px, 55vw); }
+.header-logo-small { display: none; width: 28px; height: 28px; object-fit: contain; }
 .brand-logo-small {
   display: block;
   width: 26px;
@@ -165,6 +170,16 @@
   flex-shrink: 0;
 }
 @media (max-width: 480px) {
-  /* <picture> swaps in the square logo here. */
-  .has-small .brand-logo { height: 26px; max-width: 26px; }
+  .has-small .header-logo-full { display: none; }
+  .has-small .header-logo-small { display: block; }
 }
+
+/* Sign-in card: the full logo leads, centred, in a reserved 40px slot. */
+.card-brand {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 40px;
+  margin-bottom: var(--space-5);
+}
+.card-brand .logo-plate, .card-brand .logo-img { max-width: 220px; }

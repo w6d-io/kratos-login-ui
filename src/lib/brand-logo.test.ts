@@ -18,14 +18,16 @@ describe('readBrandLogos', () => {
   const from = (vars: Record<string, string>) => readBrandLogos((k) => vars[k])
 
   it('returns nothing (letter tile) and the stock favicon when unset', () => {
-    expect(from({})).toEqual({ logoUrl: null, logoSmallUrl: null, faviconUrl: '/favicon.ico' })
+    expect(from({})).toEqual({ logoUrl: null, logoDarkUrl: null, logoSmallUrl: null, faviconUrl: '/favicon.ico', logoShowsName: true })
   })
 
   it('reads LOGO_URL and LOGO_SMALL_URL; the favicon defaults to the small logo', () => {
     expect(from({ LOGO_URL: 'https://cdn.example.com/full.png', LOGO_SMALL_URL: '/brand/icon.png' })).toEqual({
       logoUrl: 'https://cdn.example.com/full.png',
+      logoDarkUrl: null,
       logoSmallUrl: '/brand/icon.png',
       faviconUrl: '/brand/icon.png',
+      logoShowsName: true,
     })
   })
 
@@ -38,8 +40,17 @@ describe('readBrandLogos', () => {
   it('drops invalid values and falls through to the next candidate', () => {
     expect(from({ LOGO_URL: 'http://cdn.example.com/x.png', LOGO_SMALL_URL: 'javascript:x', FAVICON_URL: '//x.example.com/f.ico' })).toEqual({
       logoUrl: null,
+      logoDarkUrl: null,
       logoSmallUrl: null,
       faviconUrl: '/favicon.ico',
+      logoShowsName: true,
     })
+  })
+
+  it('reads LOGO_DARK_URL (validated) and LOGO_SHOWS_NAME (default true)', () => {
+    expect(from({ LOGO_DARK_URL: 'https://cdn.example.com/dark.png' }).logoDarkUrl).toBe('https://cdn.example.com/dark.png')
+    expect(from({ LOGO_DARK_URL: 'http://cdn.example.com/dark.png' }).logoDarkUrl).toBeNull()
+    for (const v of ['false', 'FALSE', '0', 'no']) expect(from({ LOGO_SHOWS_NAME: v }).logoShowsName).toBe(false)
+    for (const v of ['true', '1', '', 'yes']) expect(from({ LOGO_SHOWS_NAME: v }).logoShowsName).toBe(true)
   })
 })

@@ -33,7 +33,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body>
-        <AppShell logoUrl={logos.logoUrl} logoSmallUrl={logos.logoSmallUrl}>{children}</AppShell>
+        <AppShell logos={logos}>{children}</AppShell>
       </body>
     </html>
   )

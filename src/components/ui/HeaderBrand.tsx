@@ -2,38 +2,43 @@
 
 import { useState } from 'react'
 import { BrandMark } from './BrandMark'
-
-interface HeaderBrandProps {
-  appName: string
-  logoUrl: string | null
-  logoSmallUrl: string | null
-}
+import { LogoImage, useBrandLogo } from './BrandLogo'
 
 /**
- * Header identity: the install's full logo (small screens get the square
- * logo), else the square logo beside the name, else the letter tile. A logo
- * that fails to load falls back to the tile. Images are shown as-is — never
- * recoloured — so the owner supplies one that reads on both themes.
+ * Header identity, from the install's logos:
+ * - full logo that already shows the name (LOGO_SHOWS_NAME, default): the logo alone; on narrow
+ *   screens the small logo replaces it (CSS swap, both in the markup so nothing loads late);
+ * - LOGO_SHOWS_NAME=false: the small logo (else the full one) beside APP_NAME;
+ * - only a small logo: it beside the name; no logo: the letter tile beside the name.
+ * The tile appears only when no logo is configured or one fails to load — never while loading.
  */
-export function HeaderBrand({ appName, logoUrl, logoSmallUrl }: HeaderBrandProps) {
+export function HeaderBrand() {
+  const brand = useBrandLogo()
   const [failed, setFailed] = useState(false)
   const onError = () => setFailed(true)
+  const appName = brand?.appName ?? ''
+  const full = !failed ? brand?.logoUrl ?? null : null
+  const small = !failed ? brand?.logoSmallUrl ?? null : null
 
-  if (logoUrl && !failed) {
+  if (full && brand?.logoShowsName) {
     return (
-      <div className="app-brand">
-        <picture className={logoSmallUrl ? 'has-small' : undefined}>
-          {logoSmallUrl && <source media="(max-width: 480px)" srcSet={logoSmallUrl} />}
-          <img className="brand-logo" src={logoUrl} alt={appName} onError={onError} />
-        </picture>
+      <div className={`app-brand${small ? ' has-small' : ''}`}>
+        <span className="header-logo-full">
+          <LogoImage src={full} darkSrc={brand.logoDarkUrl} alt={appName} onError={onError} />
+        </span>
+        {small && <img className="header-logo-small" src={small} alt={appName} width={28} height={28} onError={onError} />}
       </div>
     )
   }
 
   return (
     <div className="app-brand">
-      {logoSmallUrl && !failed ? (
-        <img className="brand-logo-small" src={logoSmallUrl} alt="" width={26} height={26} onError={onError} />
+      {small ? (
+        <img className="brand-logo-small" src={small} alt="" width={26} height={26} onError={onError} />
+      ) : full ? (
+        <span className="header-logo-full">
+          <LogoImage src={full} darkSrc={brand?.logoDarkUrl ?? null} alt="" onError={onError} />
+        </span>
       ) : (
         <BrandMark size={26} />
       )}

@@ -128,12 +128,14 @@ Hydra's `urls.login` is `https://<this UI>/oauth2/login`, `urls.consent` is `/oa
 | Variable | Default | Description |
 |---|---|---|
 | `NEXT_PUBLIC_APP_NAME` | `Auth` | Displayed in the header, page titles, and the Ory project name. |
-| `LOGO_URL` | _(none → letter tile)_ | Full logo (wordmark) for the header, shown ~28 px high with `NEXT_PUBLIC_APP_NAME` as its alt text. Read at runtime. |
-| `LOGO_SMALL_URL` | _(none)_ | Small square logo (icon): replaces the full logo on screens ≤ 480 px, sits beside the name when `LOGO_URL` is unset, and is the favicon and apple-touch-icon. Read at runtime. |
+| `LOGO_URL` | _(none → letter tile)_ | Full logo (wordmark). Leads every sign-in card (centred, ≤ 40 px high, ≤ 220 px wide) and replaces the letter tile in the header. Read at runtime. |
+| `LOGO_DARK_URL` | _(none)_ | Dark-theme variant of `LOGO_URL`. Without it, in dark mode the logo sits on a light neutral plate so dark ink stays legible. |
+| `LOGO_SMALL_URL` | _(none)_ | Small square logo (icon): replaces the full logo in the header on screens ≤ 480 px, sits beside the name when `LOGO_URL` is unset or `LOGO_SHOWS_NAME=false`, and is the favicon and apple-touch-icon. Read at runtime. |
+| `LOGO_SHOWS_NAME` | `true` | Set `false` when `LOGO_URL` does not contain the product name: the header then shows the small logo (else the full one) beside `NEXT_PUBLIC_APP_NAME`. |
 | `FAVICON_URL` | `LOGO_SMALL_URL`, else `/favicon.ico` | Favicon override. Read at runtime. |
 | `NEXT_PUBLIC_LOGO_URL`, `NEXT_PUBLIC_FAVICON_URL` | _(none)_ | Older names, still honoured as fallbacks for `LOGO_URL` / `FAVICON_URL`. |
 
-Logo URLs must be `https://…` or a root-relative path served from `/public` (e.g. `/brand/logo.png`); anything else (`http:`, `//host/…`, `data:`, `javascript:`) is ignored. Images are shown as supplied, never recoloured — pick one that reads on both light and dark themes. If a logo fails to load, the header falls back to the letter tile and name. The values are also returned by `GET /api/config` (`logoUrl`, `logoSmallUrl`, `faviconUrl`).
+Logo URLs must be `https://…` or a root-relative path served from `/public` (e.g. `/brand/logo.png`); anything else (`http:`, `//host/…`, `data:`, `javascript:`) is ignored. Images are shown as supplied, never recoloured; give `LOGO_DARK_URL` for a dark-theme version. If a logo fails to load, the header falls back to the letter tile and name. With a logo set, the step icon on each card (envelope, key…) shrinks to a small mark beside the title so the brand leads. Logo slots have a fixed height, so nothing moves while images load, and the letter tile only appears when no logo is configured. The values are also returned by `GET /api/config` (`logoUrl`, `logoDarkUrl`, `logoSmallUrl`, `faviconUrl`, `logoShowsName`).
 
 ### Theme
 

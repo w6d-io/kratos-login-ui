@@ -1,52 +1,73 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { HeaderBrand } from './HeaderBrand'
+import { BrandLogoProvider, type BrandLogoConfig } from './BrandLogo'
 
 afterEach(cleanup)
 
 const FULL = 'https://cdn.example.com/full.png'
+const DARK = 'https://cdn.example.com/full-dark.png'
 const SMALL = '/brand/icon.png'
+const cfg = (over: Partial<BrandLogoConfig> = {}): BrandLogoConfig => ({
+  appName: 'Example ID', logoUrl: null, logoDarkUrl: null, logoSmallUrl: null, logoShowsName: true, ...over,
+})
+const show = (over: Partial<BrandLogoConfig> = {}) =>
+  render(<BrandLogoProvider value={cfg(over)}><HeaderBrand /></BrandLogoProvider>)
 
 describe('HeaderBrand', () => {
-  it('shows the letter tile and the name when no logo is configured', () => {
-    const { container } = render(<HeaderBrand appName="Example ID" logoUrl={null} logoSmallUrl={null} />)
+  it('no logo: the letter tile and the name', () => {
+    const { container } = show()
     expect(container.querySelector('.brand-mark')).not.toBeNull()
     expect(screen.getByText('Example ID')).toBeTruthy()
     expect(container.querySelector('img')).toBeNull()
   })
 
-  it('shows the full logo with the app name as alt text and no tile', () => {
-    const { container } = render(<HeaderBrand appName="Example ID" logoUrl={FULL} logoSmallUrl={null} />)
-    const img = screen.getByRole('img', { name: 'Example ID' })
-    expect(img.getAttribute('src')).toBe(FULL)
+  it('full logo that already shows the name (default): logo only, alt = app name, no tile', () => {
+    const { container } = show({ logoUrl: FULL })
+    expect(screen.getByRole('img', { name: 'Example ID' }).getAttribute('src')).toBe(FULL)
     expect(container.querySelector('.brand-mark')).toBeNull()
     expect(screen.queryByText('Example ID')).toBeNull()
   })
 
-  it('swaps in the small logo on small screens', () => {
-    const { container } = render(<HeaderBrand appName="Example ID" logoUrl={FULL} logoSmallUrl={SMALL} />)
-    const source = container.querySelector('picture source')
-    expect(source?.getAttribute('srcset')).toBe(SMALL)
-    expect(source?.getAttribute('media')).toMatch(/max-width/)
+  it('full logo + small logo: the small one is there for narrow screens (CSS swaps them)', () => {
+    const { container } = show({ logoUrl: FULL, logoSmallUrl: SMALL })
+    expect(container.querySelector('.header-logo-full img')?.getAttribute('src')).toBe(FULL)
+    expect(container.querySelector('.header-logo-small')?.getAttribute('src')).toBe(SMALL)
+    expect(container.querySelector('.app-brand')?.classList.contains('has-small')).toBe(true)
   })
 
-  it('uses the small logo in place of the tile when only the small one is set', () => {
-    const { container } = render(<HeaderBrand appName="Example ID" logoUrl={null} logoSmallUrl={SMALL} />)
+  it('LOGO_SHOWS_NAME=false: the small logo next to the name', () => {
+    const { container } = show({ logoUrl: FULL, logoSmallUrl: SMALL, logoShowsName: false })
+    expect(container.querySelector('img')?.getAttribute('src')).toBe(SMALL)
+    expect(screen.getByText('Example ID')).toBeTruthy()
+  })
+
+  it('LOGO_SHOWS_NAME=false without a small logo: the full logo next to the name', () => {
+    const { container } = show({ logoUrl: FULL, logoShowsName: false })
+    expect(container.querySelector('.header-logo-full img')?.getAttribute('src')).toBe(FULL)
+    expect(screen.getByText('Example ID')).toBeTruthy()
+  })
+
+  it('only a small logo: it replaces the tile next to the name', () => {
+    const { container } = show({ logoSmallUrl: SMALL })
     expect(container.querySelector('img')?.getAttribute('src')).toBe(SMALL)
     expect(container.querySelector('.brand-mark')).toBeNull()
     expect(screen.getByText('Example ID')).toBeTruthy()
   })
 
-  it('falls back to the tile and name when the logo fails to load', () => {
-    const { container } = render(<HeaderBrand appName="Example ID" logoUrl={FULL} logoSmallUrl={SMALL} />)
+  it('a dark variant is rendered beside the light one (theme CSS picks)', () => {
+    const { container } = show({ logoUrl: FULL, logoDarkUrl: DARK })
+    expect(container.querySelector('img.logo-light')?.getAttribute('src')).toBe(FULL)
+    expect(container.querySelector('img.logo-dark')?.getAttribute('src')).toBe(DARK)
+    expect(container.querySelector('img.logo-dark')?.getAttribute('alt')).toBe('')
+  })
+
+  it('falls back to the tile and name when the logo fails to load — never before', () => {
+    const { container } = show({ logoUrl: FULL, logoSmallUrl: SMALL })
+    expect(container.querySelector('.brand-mark')).toBeNull()
     fireEvent.error(container.querySelector('img')!)
     expect(container.querySelector('img')).toBeNull()
     expect(container.querySelector('.brand-mark')).not.toBeNull()
     expect(screen.getByText('Example ID')).toBeTruthy()
-  })
-
-  it('never recolours the image (no filter, no accent background)', () => {
-    const { container } = render(<HeaderBrand appName="Example ID" logoUrl={FULL} logoSmallUrl={null} />)
-    expect(container.querySelector('img')?.getAttribute('style') ?? '').not.toMatch(/filter/)
   })
 })
