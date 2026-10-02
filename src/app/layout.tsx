@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { Inter, JetBrains_Mono } from 'next/font/google'
 import { PublicEnvScript, env } from 'next-runtime-env'
 import { AppShell } from '@/components/ui/AppShell'
+import { readBrandLogos } from '@/lib/brand-logo'
 import './globals.css'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-sans-runtime' })
@@ -16,12 +17,14 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  const faviconUrl = env('NEXT_PUBLIC_FAVICON_URL') || '/favicon.ico'
+  // Read per request (env() opts out of static rendering), so logos are runtime config.
+  const logos = readBrandLogos((k) => env(k))
   return (
     <html lang="en" className={`${inter.variable} ${jetbrains.variable}`} suppressHydrationWarning>
       <head>
         <PublicEnvScript />
-        <link rel="icon" href={faviconUrl} />
+        <link rel="icon" href={logos.faviconUrl} />
+        {logos.logoSmallUrl && <link rel="apple-touch-icon" href={logos.logoSmallUrl} />}
         {/* Set theme as early as possible to avoid flash. */}
         <script
           dangerouslySetInnerHTML={{
@@ -30,7 +33,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body>
-        <AppShell>{children}</AppShell>
+        <AppShell logoUrl={logos.logoUrl} logoSmallUrl={logos.logoSmallUrl}>{children}</AppShell>
       </body>
     </html>
   )

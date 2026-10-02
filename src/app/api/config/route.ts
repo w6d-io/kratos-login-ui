@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { readBrandLogos } from '@/lib/brand-logo'
 
 /**
  * Runtime config endpoint — exposes environment variables to the client.
@@ -9,5 +10,6 @@ export function GET() {
     kratosUrl: process.env.KRATOS_BROWSER_URL || process.env.NEXT_PUBLIC_KRATOS_BROWSER_URL || 'http://kratos:4433',
     defaultReturnUrl: process.env.DEFAULT_RETURN_URL || process.env.NEXT_PUBLIC_DEFAULT_RETURN_URL || '/',
     appName: process.env.APP_NAME || process.env.NEXT_PUBLIC_APP_NAME || '',
+    ...readBrandLogos(),
   })
 }

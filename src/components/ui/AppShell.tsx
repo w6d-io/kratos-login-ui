@@ -4,12 +4,15 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { usePathname } from 'next/navigation'
 import { env } from 'next-runtime-env'
 import { config } from '@/lib/config'
-import { BrandMark } from './BrandMark'
+import { HeaderBrand } from './HeaderBrand'
 import { Icons } from './Icons'
 import { BrandingProvider, SignInDomain, SiteBrand, brandingStyle, useBranding } from './Branding'
 
 interface AppShellProps {
   children: ReactNode
+  /** Install logos from LOGO_URL / LOGO_SMALL_URL (validated server-side); null → letter tile. */
+  logoUrl?: string | null
+  logoSmallUrl?: string | null
 }
 
 type Theme = 'light' | 'dark' | 'system'
@@ -128,7 +131,7 @@ function ThemeMenu() {
   )
 }
 
-function Shell({ children }: AppShellProps) {
+function Shell({ children, logoUrl = null, logoSmallUrl = null }: AppShellProps) {
   const { branding } = useBranding()
   const appName = env('NEXT_PUBLIC_APP_NAME') || 'Acme ID'
   const wide = usePathname()?.startsWith('/settings') ?? false
@@ -139,10 +142,7 @@ function Shell({ children }: AppShellProps) {
     <div className="app" style={brandingStyle(branding)} data-branded={branding?.accent ? '' : undefined}>
       <a href="#main" className="skip-link">Skip to content</a>
       <header className="app-header">
-        <div className="app-brand">
-          <BrandMark size={26} />
-          <span>{appName}</span>
-        </div>
+        <HeaderBrand appName={appName} logoUrl={logoUrl} logoSmallUrl={logoSmallUrl} />
         <div className="app-header-spacer" />
         <ThemeMenu />
       </header>

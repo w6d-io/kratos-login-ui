@@ -128,8 +128,12 @@ Hydra's `urls.login` is `https://<this UI>/oauth2/login`, `urls.consent` is `/oa
 | Variable | Default | Description |
 |---|---|---|
 | `NEXT_PUBLIC_APP_NAME` | `Auth` | Displayed in the header, page titles, and the Ory project name. |
-| `NEXT_PUBLIC_LOGO_URL` | `/logo.svg` | Logo URL — **local path** served from `/public` (e.g. `/logo.svg`, `/brand/my-logo.svg`) **or remote URL** (e.g. `https://cdn.example.com/logo.svg`). |
-| `NEXT_PUBLIC_FAVICON_URL` | `/favicon.ico` | Favicon URL — same rules as logo. |
+| `LOGO_URL` | _(none → letter tile)_ | Full logo (wordmark) for the header, shown ~28 px high with `NEXT_PUBLIC_APP_NAME` as its alt text. Read at runtime. |
+| `LOGO_SMALL_URL` | _(none)_ | Small square logo (icon): replaces the full logo on screens ≤ 480 px, sits beside the name when `LOGO_URL` is unset, and is the favicon and apple-touch-icon. Read at runtime. |
+| `FAVICON_URL` | `LOGO_SMALL_URL`, else `/favicon.ico` | Favicon override. Read at runtime. |
+| `NEXT_PUBLIC_LOGO_URL`, `NEXT_PUBLIC_FAVICON_URL` | _(none)_ | Older names, still honoured as fallbacks for `LOGO_URL` / `FAVICON_URL`. |
+
+Logo URLs must be `https://…` or a root-relative path served from `/public` (e.g. `/brand/logo.png`); anything else (`http:`, `//host/…`, `data:`, `javascript:`) is ignored. Images are shown as supplied, never recoloured — pick one that reads on both light and dark themes. If a logo fails to load, the header falls back to the letter tile and name. The values are also returned by `GET /api/config` (`logoUrl`, `logoSmallUrl`, `faviconUrl`).
 
 ### Theme
 
@@ -318,14 +322,15 @@ Deploy the same image N times with different env. No per-brand build:
 ```yaml
 # brand-a
 NEXT_PUBLIC_APP_NAME:            "Brand A"
-NEXT_PUBLIC_LOGO_URL:            "https://cdn.brand-a.com/logo.svg"
+LOGO_URL:                        "https://cdn.brand-a.example.com/logo.svg"
+LOGO_SMALL_URL:                  "https://cdn.brand-a.example.com/icon.png"
 NEXT_PUBLIC_THEME_PRIMARY_COLOR: "FF6B35"
 NEXT_PUBLIC_KRATOS_BROWSER_URL:  "https://auth.brand-a.com"
 NEXT_PUBLIC_DEFAULT_RETURN_URL:  "https://app.brand-a.com"
 
 # brand-b
 NEXT_PUBLIC_APP_NAME:            "Brand B"
-NEXT_PUBLIC_LOGO_URL:            "/brand/brand-b.svg"
+LOGO_URL:                        "/brand/brand-b.svg"
 NEXT_PUBLIC_THEME_PRIMARY_COLOR: "3B82F6"
 NEXT_PUBLIC_KRATOS_BROWSER_URL:  "https://auth.brand-b.com"
 NEXT_PUBLIC_DEFAULT_RETURN_URL:  "https://app.brand-b.com"
@@ -333,17 +338,17 @@ NEXT_PUBLIC_DEFAULT_RETURN_URL:  "https://app.brand-b.com"
 
 ## Branding
 
-The image ships with **no branding by default** — `NEXT_PUBLIC_APP_NAME` falls back to `Auth`, and `NEXT_PUBLIC_LOGO_URL` falls back to a generic lock-icon `/logo.svg`.
+The image ships with **no branding by default** — `NEXT_PUBLIC_APP_NAME` falls back to `Auth`, and with no `LOGO_URL` / `LOGO_SMALL_URL` the header shows a letter tile.
 
 Three ways to supply your own logo:
 
 | Strategy | How | When to use |
 |---|---|---|
-| **Bake into a derivative image** | `FROM ghcr.io/w6d-io/kratos-login-ui:vX.Y.Z`, then `COPY my-logo.svg /app/public/brand/my-logo.svg`, then set `NEXT_PUBLIC_LOGO_URL=/brand/my-logo.svg` | You control the image, want offline-self-contained deploys |
-| **Remote URL** | `NEXT_PUBLIC_LOGO_URL=https://cdn.example.com/logo.svg` | You host assets on a CDN |
-| **ConfigMap mount** | Mount a `ConfigMap` with your SVG at `/app/public/brand/logo.svg`, set `NEXT_PUBLIC_LOGO_URL=/brand/logo.svg` | Kubernetes; swap branding without rebuilding |
+| **Bake into a derivative image** | `FROM ghcr.io/w6d-io/kratos-login-ui:vX.Y.Z`, then `COPY my-logo.svg /app/public/brand/my-logo.svg`, then set `LOGO_URL=/brand/my-logo.svg` | You control the image, want offline-self-contained deploys |
+| **Remote URL** | `LOGO_URL=https://cdn.example.com/logo.svg` | You host assets on a CDN |
+| **ConfigMap mount** | Mount a `ConfigMap` with your SVG at `/app/public/brand/logo.svg`, set `LOGO_URL=/brand/logo.svg` | Kubernetes; swap branding without rebuilding |
 
-Same three options apply to `NEXT_PUBLIC_FAVICON_URL`.
+Same three options apply to `LOGO_SMALL_URL` and `FAVICON_URL`.
 
 ## Local development
 
