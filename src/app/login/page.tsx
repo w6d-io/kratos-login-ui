@@ -385,6 +385,7 @@ function LoginPageContent() {
         onChangeEmail={changeEmail}
         botCheck={bot.widget}
         botCheckPending={bot.pending}
+        signUpOpen={protection?.registration.mode !== 'closed' || branding?.signUp?.open === true}
       />
     )
   }

@@ -55,6 +55,7 @@
 }
 .card-foot a, .card-foot .btn-link { font-weight: var(--weight-medium); }
 .card-foot .back { display: inline-flex; align-items: center; gap: var(--space-1); }
+.card-foot .card-foot-line { margin: 0 0 var(--space-2); }
 @media (max-width: 480px) {
   .card-head { padding: var(--space-5) var(--space-5) 0; }
   .card-head.solo { padding-bottom: var(--space-5); }

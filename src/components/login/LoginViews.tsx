@@ -246,6 +246,8 @@ export function CodeView(p: Base & BotCheckSlot & {
   onSubmitCodeVerify: Submit
   onResend: () => void | Promise<unknown>
   onChangeEmail: () => void
+  /** The platform's sign-up, or the site's own: offer "Create an account" under the address step. */
+  signUpOpen?: boolean
 }) {
   const { flow } = p
   const idField = getInput(flow, 'identifier')
@@ -289,7 +291,10 @@ export function CodeView(p: Base & BotCheckSlot & {
       icon={<Icons.Mail size={20} />}
       title="Sign in with an email code"
       subtitle="No password needed — we’ll email you a 6-digit code."
-      footer={<Link href={withQuery('/login', flow.return_to || '')} className="back"><Icons.ArrowLeft size={12} /> All sign-in options</Link>}
+      footer={<>
+        {p.signUpOpen && <p className="card-foot-line">New here? <Link href={withQuery('/register', flow.return_to || '')}>Create an account</Link></p>}
+        <Link href={withQuery('/login', flow.return_to || '')} className="back"><Icons.ArrowLeft size={12} /> All sign-in options</Link>
+      </>}
     >
       <FlowMessages banners={p.banners} networkError={p.networkError} />
       <form onSubmit={(e) => { if (p.botCheckPending) { e.preventDefault(); return } return p.onSubmitCodeRequest(e) }} noValidate>
