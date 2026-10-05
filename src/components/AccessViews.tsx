@@ -22,9 +22,31 @@ interface ForbiddenViewProps {
   origin: string
   /** The session is already aal2, so the refusal is a permission problem. */
   alreadyAal2: boolean
+  /** The site's own sign-up is open: offer to join it with this account. */
+  join?: { onContinue: () => void; busy: boolean; error: string | null } | null
 }
 
-export function ForbiddenView({ siteName, email, helpUrl, returnTo, origin, alreadyAal2 }: ForbiddenViewProps) {
+export function ForbiddenView({ siteName, email, helpUrl, returnTo, origin, alreadyAal2, join }: ForbiddenViewProps) {
+  if (join) {
+    return (
+      <FlowCard
+        icon={<Icons.User size={20} />}
+        title={`Continue to ${siteName}`}
+        subtitle={`${siteName} is open to new members. Join it with the account you’re signed in with.`}
+      >
+        {email && <AccountChip identifier={email} />}
+        {join.error && <Banner tone="warn">{join.error}</Banner>}
+        <div className="form-actions" style={{ marginTop: 0 }}>
+          <button type="button" className="btn btn-primary btn-block" onClick={join.onContinue} disabled={join.busy}>
+            {join.busy ? 'Joining…' : `Continue to ${siteName}`}
+          </button>
+          <a href={switchAccountUrl(origin, returnTo)} className="btn btn-secondary btn-block">
+            <Icons.User size={16} /> Use another account
+          </a>
+        </div>
+      </FlowCard>
+    )
+  }
   return (
     <FlowCard
       icon={<Icons.Lock size={20} />}

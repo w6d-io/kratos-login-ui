@@ -31,6 +31,7 @@ export function humanizeTrait(name: string): string {
 /** The label a person reads: "Your name" for the name, Kratos' title (normalised) otherwise. */
 function traitLabel(f: FlowField): string {
   if (f.name === 'traits.name') return 'Your name'
+  if (f.name === 'traits.company') return 'Company (optional)'
   return fieldLabel(f.label, humanizeTrait(f.name))
 }
 

@@ -96,6 +96,7 @@ describe('sanitizeBranding', () => {
       minAal: 'aal2',
       scope: 'writes',
       defaultReturnUrl: 'https://payroll.dev.example.com/home',
+      signUp: null,
     })
   })
 

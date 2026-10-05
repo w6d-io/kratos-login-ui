@@ -9,6 +9,7 @@ import { parseAccessParams, resolveAccess, returnGuard, type AccessOutcome, type
 import { Loading } from '@/components/Loading'
 import { AccessErrorView, EnrolView, ForbiddenView } from '@/components/AccessViews'
 import { useBranding, useBrandingReturnTo } from '@/components/ui/Branding'
+import { continueRefusalText, type ContinueResult } from '@/lib/sign-up-server'
 
 /**
  * Where the gateway sends browsers it refused on a 2FA site:
@@ -25,6 +26,8 @@ function AccessPageContent() {
   const { branding } = useBranding()
   useBrandingReturnTo(params.returnTo)
   const [outcome, setOutcome] = useState<AccessOutcome | null>(null)
+  const [joining, setJoining] = useState(false)
+  const [joinError, setJoinError] = useState<string | null>(null)
 
   const run = useCallback(() => {
     const kratos = createBrowserClient()
@@ -62,6 +65,31 @@ function AccessPageContent() {
 
   if (!outcome) return <Loading />
 
+  const signUp = branding?.signUp?.open ? branding.signUp : null
+  const continueToSite = async () => {
+    setJoining(true)
+    setJoinError(null)
+    try {
+      const res = await fetch('/api/sign-up/continue', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ return_to: params.returnTo ?? '' }),
+      })
+      const result = (await res.json()) as ContinueResult
+      if (result.kind === 'joined' && params.returnTo) {
+        window.location.href = params.returnTo
+        return
+      }
+      if (result.kind === 'refused') setJoinError(continueRefusalText(result.reason, branding?.displayName || 'This site', signUp?.domains ?? []))
+      else if (result.kind === 'unauthenticated') window.location.href = initFlowUrl('login', params.returnTo ?? undefined)
+      else setJoinError('Something went wrong. Please try again in a minute.')
+    } catch {
+      setJoinError('Something went wrong. Please try again in a minute.')
+    }
+    setJoining(false)
+  }
+
   const siteName = branding?.displayName || params.site || 'this site'
   const helpUrl = branding?.helpUrl ?? null
   switch (outcome.kind) {
@@ -74,6 +102,7 @@ function AccessPageContent() {
           returnTo={params.returnTo}
           origin={window.location.origin}
           alreadyAal2={outcome.alreadyAal2}
+          join={signUp && outcome.email ? { onContinue: () => void continueToSite(), busy: joining, error: joinError } : null}
         />
       )
     case 'enrol':

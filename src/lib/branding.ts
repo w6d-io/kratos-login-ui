@@ -25,6 +25,31 @@ export interface SiteBranding {
   scope: TwoFactorScope | null
   /** Where a visitor of this site lands when a flow has no return_to (still checked against the allow-list before use). */
   defaultReturnUrl?: string | null
+  /** Public sign-up through this site (its own, beside the platform's): null when jinbe says nothing. */
+  signUp?: SiteSignUp | null
+}
+
+export interface SiteSignUp {
+  open: boolean
+  mode: 'closed' | 'open' | 'domains'
+  /** Who may sign up, in domains mode. */
+  domains: string[]
+  /** What organisation a sign-up lands in: personal and domain ask for an optional company. */
+  orgs: 'personal' | 'domain' | 'invite' | 'none'
+}
+
+const SIGN_UP_MODES = ['closed', 'open', 'domains'] as const
+const SIGN_UP_ORGS = ['personal', 'domain', 'invite', 'none'] as const
+const DOMAIN = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/
+
+export function sanitizeSignUp(raw: unknown): SiteSignUp | null {
+  if (!raw || typeof raw !== 'object') return null
+  const r = raw as Record<string, unknown>
+  const mode = SIGN_UP_MODES.find((m) => m === r.mode)
+  const orgs = SIGN_UP_ORGS.find((o) => o === r.orgs)
+  if (!mode || !orgs) return null
+  const domains = Array.isArray(r.domains) ? r.domains.filter((d): d is string => typeof d === 'string' && DOMAIN.test(d)).slice(0, 20) : []
+  return { open: r.open === true && mode !== 'closed', mode, domains, orgs }
 }
 
 const MAX_DISPLAY_NAME = 60
@@ -160,6 +185,7 @@ export function sanitizeBranding(raw: unknown, host: string): SiteBranding | nul
     minAal: r.minAal === 'aal1' || r.minAal === 'aal2' ? r.minAal : null,
     scope: ['none', 'writes', 'all', 'routes'].includes(r.scope as string) ? (r.scope as TwoFactorScope) : null,
     defaultReturnUrl: safeHttpUrl(r.defaultReturnUrl),
+    signUp: sanitizeSignUp(r.signUp),
   }
 }
 

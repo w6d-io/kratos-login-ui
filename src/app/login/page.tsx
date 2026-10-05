@@ -2,7 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { useBrandingReturnTo } from '@/components/ui/Branding'
+import { useBranding, useBrandingReturnTo } from '@/components/ui/Branding'
 import type { LoginFlow, Session, UpdateLoginFlowBody } from '@ory/client'
 import { initFlowUrl } from '@/lib/ory'
 import { Loading } from '@/components/Loading'
@@ -49,6 +49,7 @@ function LoginPageContent() {
   const [networkError, setNetworkError] = useState<string | null>(null)
   const searchParams = useSearchParams()
   useBrandingReturnTo(flow?.return_to)
+  const { branding } = useBranding()
   const flowId = searchParams.get('flow')
   // refresh=true / aal=aal2 must round-trip into the Kratos init endpoint.
   // Lost on the first redirect (init without these), Kratos serves a stale
@@ -422,7 +423,8 @@ function LoginPageContent() {
       botCheck={bot.widget}
       botCheckPending={bot.pending}
       botCheckToken={bot.token}
-      signUpOpen={protection?.registration.mode !== 'closed'}
+      // The platform's own sign-up, or the site's (its intent's signUp) when this sign-in belongs to one.
+      signUpOpen={protection?.registration.mode !== 'closed' || branding?.signUp?.open === true}
     />
   )
 }

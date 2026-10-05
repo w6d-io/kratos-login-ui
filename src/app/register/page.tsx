@@ -2,7 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { useBrandingReturnTo } from '@/components/ui/Branding'
+import { useBranding, useBrandingReturnTo } from '@/components/ui/Branding'
 import type { RegistrationFlow, UpdateRegistrationFlowBody } from '@ory/client'
 import { initFlowUrl } from '@/lib/ory'
 import { Loading } from '@/components/Loading'
@@ -36,6 +36,8 @@ function RegisterPageContent() {
   const [networkError, setNetworkError] = useState<string | null>(null)
   const searchParams = useSearchParams()
   useBrandingReturnTo(flow?.return_to)
+  const { branding } = useBranding()
+  const siteSignUp = branding?.signUp?.open ? branding.signUp : null
   const flowId = searchParams.get('flow')
   const returnTo = searchParams.get('return_to') || ''
   const fetchingRef = useRef(false)
@@ -101,7 +103,12 @@ function RegisterPageContent() {
 
   const banners = useMemo(() => extractFlowBanners(flow), [flow])
   const oidc = useMemo(() => getOidcProviders(flow), [flow])
-  const traitFields = useMemo(() => registrationTraitFields(flow, (name) => isProtectedTrait(name, protectedTraits)), [flow, protectedTraits])
+  // Company names the organisation a site sign-up creates: asked only when one is made.
+  const asksCompany = siteSignUp?.orgs === 'personal' || siteSignUp?.orgs === 'domain'
+  const traitFields = useMemo(
+    () => registrationTraitFields(flow, (name) => isProtectedTrait(name, protectedTraits) || (name === 'traits.company' && !asksCompany)),
+    [flow, protectedTraits, asksCompany],
+  )
   // Detect available submit method: prefer password, fall back to profile
   // (multi-step flow — first click captures traits, server returns password fields).
   const hasPassword = useMemo(() => hasGroup(flow, 'password'), [flow])
@@ -265,7 +272,7 @@ function RegisterPageContent() {
     form.submit()
   }
 
-  if (protection?.registration.mode === 'closed') {
+  if (protection?.registration.mode === 'closed' && !siteSignUp) {
     return <SignUpClosedView message={signUpLimitText(protection) ?? ''} signInHref={signInUrl(flow?.return_to || returnTo || null)} />
   }
 
