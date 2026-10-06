@@ -219,3 +219,35 @@
   .codes-print { position: absolute; left: 0; top: 0; width: 100%; }
   .codes-print .codes-actions, .codes-print .no-print { display: none; }
 }
+
+/* ── Organizations (/account) ────────────────────────────────────────── */
+.settings-nav-link .nav-org { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.role-chips { display: inline-flex; flex-wrap: wrap; gap: var(--space-1); vertical-align: middle; }
+.role-picker { margin: var(--space-3) 0 0; padding: 0; border: 0; display: grid; gap: var(--space-2); }
+.role-picker legend { padding: 0; margin-bottom: var(--space-1); }
+.role-option.locked { padding-left: 28px; }
+.member-edit { margin-top: var(--space-3); padding: var(--space-4); background: var(--color-surface-2); border: 1px solid var(--color-border); border-radius: var(--radius-md); }
+.member-edit .banner { margin: var(--space-3) 0 0; }
+.inline-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; margin-top: var(--space-3); }
+.inline-form { display: flex; gap: var(--space-2); align-items: flex-end; flex-wrap: wrap; }
+.inline-form .field { flex: 1; min-width: 200px; margin-bottom: 0; }
+.confirm-inline { display: inline-flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; justify-content: flex-end; }
+.subhead { margin: var(--space-5) 0 var(--space-3); font-size: var(--text-md); font-weight: var(--weight-semibold); }
+.settings-section-body > .subhead:first-child { margin-top: 0; }
+.invite-created .secret code { letter-spacing: 0; }
+.dns-record {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--space-1) var(--space-3);
+  align-items: center;
+  margin: var(--space-2) 0 0;
+  padding: var(--space-3);
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: var(--text-base);
+}
+.dns-record dt { color: var(--color-text-muted); }
+.dns-record dd { margin: 0; display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.dns-record code { word-break: break-all; }
+.invite-roles { margin: var(--space-1) 0 0; padding-left: var(--space-5); display: grid; gap: var(--space-1); font-size: var(--text-base); }

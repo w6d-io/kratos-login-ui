@@ -44,6 +44,10 @@ export function SettingsNav({ tab, setTab, mfaOn, hasPassword }: { tab: Settings
         )
       })}
       <div className="settings-nav-sep" />
+      <a className="settings-nav-link" href="/account">
+        <Icons.Users size={15} />
+        <span>Organizations</span>
+      </a>
       <a className="settings-nav-link" href="/logout">
         <Icons.LogOut size={15} />
         <span>Sign out</span>

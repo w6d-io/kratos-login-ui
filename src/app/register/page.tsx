@@ -24,6 +24,7 @@ import { signInUrl } from '@/lib/access'
 import { useBotCheck, useSignInProtection } from '@/components/ui/BotCheck'
 import { captchaHeaders, isTokenRefusal, DEFAULT_PROTECTED_TRAITS, isProtectedTrait, signUpLimitText } from '@/lib/sign-in-protection'
 import { offeredSignUpMethods, parseSignUpMethods, type SignUpMethod } from '@/lib/sign-up-methods'
+import { isInvitationLink } from '@/lib/account'
 
 function RegisterPageContent() {
   const [flow, setFlow] = useState<RegistrationFlow | null>(null)
@@ -272,7 +273,10 @@ function RegisterPageContent() {
     form.submit()
   }
 
-  if (protection?.registration.mode === 'closed' && !siteSignUp) {
+  // An invitation link lets its invited address register whatever the sign-up policy says (jinbe's
+  // guard checks the token and the address); the form is drawn, the decision stays there.
+  const invited = typeof window !== 'undefined' && isInvitationLink(flow?.return_to || returnTo, window.location.origin)
+  if (protection?.registration.mode === 'closed' && !siteSignUp && !invited) {
     return <SignUpClosedView message={signUpLimitText(protection) ?? ''} signInHref={signInUrl(flow?.return_to || returnTo || null)} />
   }
 

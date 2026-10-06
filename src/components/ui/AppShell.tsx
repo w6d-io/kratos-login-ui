@@ -135,7 +135,8 @@ function ThemeMenu() {
 function Shell({ children, logos }: AppShellProps) {
   const { branding } = useBranding()
   const appName = env('NEXT_PUBLIC_APP_NAME') || 'Acme ID'
-  const wide = usePathname()?.startsWith('/settings') ?? false
+  const path = usePathname() ?? ''
+  const wide = path.startsWith('/settings') || path.startsWith('/account')
   const footer = config.footer
   const links = footer.links.filter((l) => typeof l?.url === 'string' && /^(https?:\/\/|\/(?!\/))/.test(l.url))
 

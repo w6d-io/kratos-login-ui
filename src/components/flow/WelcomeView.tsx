@@ -67,6 +67,7 @@ function Footer({ consoleUrl }: { consoleUrl: string | null }) {
   return (
     <span className="welcome-foot">
       <a href="/settings">Account settings</a>
+      <a href="/account">Organizations</a>
       {consoleUrl && <a href={consoleUrl}>Admin console</a>}
       <a href="/logout">Sign out</a>
     </span>
