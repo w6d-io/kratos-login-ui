@@ -47,28 +47,17 @@ describe('resolveInvitationState', () => {
     expect(await resolveInvitationState(deps({ byToken: async () => answer(503) }))).toEqual({ kind: 'unavailable' })
   })
 
-  it('older jinbe: asks about an unverified address: wrong account, gone, or verify first', async () => {
-    const me = { email: 'ann@x.co', verified: false }
-    expect(await resolveInvitationState(deps({ me, accept: async () => answer(403, { code: 'invitation_other_address' }) }))).toEqual({ kind: 'wrong-account', email: 'ann@x.co', switchHref: '/sw' })
-    expect(await resolveInvitationState(deps({ me, accept: async () => answer(404, { code: 'invitation_not_found' }) }))).toEqual({ kind: 'gone' })
-    expect(await resolveInvitationState(deps({ me, accept: async () => answer(403, { code: 'email_not_verified' }) }))).toEqual({ kind: 'unverified', email: 'ann@x.co', verifyHref: '/ver' })
-    expect(await resolveInvitationState(deps({ me, accept: async () => answer(503) }))).toMatchObject({ kind: 'unverified' })
+  it('a jinbe without the look-up is unavailable, verified or not, and nothing is accepted before the click', async () => {
+    for (const verified of [false, true]) {
+      const accept = vi.fn(async () => answer(200))
+      const mine = vi.fn(async () => answer(200, { invitations: [] }))
+      expect(await resolveInvitationState(deps({ me: { email: 'ann@x.co', verified }, accept, mine }))).toEqual({ kind: 'unavailable' })
+      expect(accept).not.toHaveBeenCalled()
+    }
   })
 
-  it('older jinbe: shows the invitation when exactly one is pending, and never accepts before the click', async () => {
-    const accept = vi.fn(async () => answer(200))
-    const one = await resolveInvitationState(deps({ accept, mine: async () => answer(200, { invitations: [pending(INV, 'Acme')] }) }))
-    expect(one).toMatchObject({ kind: 'ready', email: 'ann@x.co', invitation: { id: INV, orgName: 'Acme', roles: ['jinbe:viewer'] } })
-    expect(accept).not.toHaveBeenCalled()
-    const two = await resolveInvitationState(deps({ mine: async () => answer(200, { invitations: [pending(INV, 'Acme'), pending(ORG, 'Beta')] }) }))
-    expect(two).toMatchObject({ kind: 'ready', invitation: null })
-    expect(await resolveInvitationState(deps({ mine: async () => answer(503) }))).toEqual({ kind: 'unavailable' })
-  })
-})
-
-describe('acceptOutcome', () => {
-  const me = { email: 'ann@x.co', verified: true }
   it('lands on the org, or says what went wrong', () => {
+    const me = { email: 'ann@x.co', verified: true }
     expect(acceptOutcome(answer(200, { organization: { id: ORG }, roles: [], dropped: ['jinbe:owner'] }), me, urls)).toEqual({ kind: 'joined', to: `/account?joined=${ORG}&dropped=jinbe%3Aowner#org-${ORG}` })
     expect(acceptOutcome(answer(404), me, urls)).toEqual({ kind: 'state', state: { kind: 'gone' } })
     expect(acceptOutcome(answer(401), me, urls)).toEqual({ kind: 'signed-out' })

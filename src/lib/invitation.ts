@@ -3,10 +3,8 @@ import { errorText, isInvitationToken, isRole, isUuid, joinedUrl, parseInvitatio
 /**
  * What the invitation page shows (/invitation?token=…). Signed out → sign in or register (returning
  * here). Signed in → jinbe's GET me/invitations/by-token: the invitation (with whether my address is
- * verified yet), gone, or made for another address. A jinbe without that route (404 on the route
- * itself, no `code`) falls back: an unverified address → an accept attempt, which can't succeed
- * unverified but says whether the invitation is mine and still there; a verified one → my pending
- * invitations (shown when there is exactly one).
+ * verified yet), gone, or made for another address. Anything else (an outage, a jinbe without that
+ * route) is "unavailable": nothing is accepted before the person clicks.
  */
 
 /** What the invitation page draws. */
@@ -68,18 +66,6 @@ export async function resolveInvitationState(o: InvitationDeps): Promise<Invitat
   }
   if (d.code === 'invitation_not_found') return { kind: 'gone' }
   if (d.code === 'invitation_other_address') return { kind: 'wrong-account', email: o.me.email, switchHref: o.urls.switchAccount }
-  if (found.status !== 404) return { kind: 'unavailable' }
-  // An older jinbe without the look-up.
-  if (!o.me.verified) {
-    const out = acceptOutcome(await o.accept(o.token), o.me, o.urls)
-    if (out.kind === 'joined') return out
-    if (out.kind === 'state') return out.state
-    if (out.kind === 'signed-out') return signedOut
-    return { kind: 'unverified', email: o.me.email, verifyHref: o.urls.verify }
-  }
-  const mine = await o.mine()
-  if (mine.status === 401) return signedOut
-  if (!mine.ok && (mine.status === 0 || mine.status >= 500)) return { kind: 'unavailable' }
-  const list: Invitation[] = mine.ok ? parseInvitations(mine.data) : []
-  return { kind: 'ready', email: o.me.email, invitation: list.length === 1 ? list[0] : null, switchHref: o.urls.switchAccount }
+  // Anything else, a jinbe without the look-up included: never guess, never accept before the click.
+  return { kind: 'unavailable' }
 }
