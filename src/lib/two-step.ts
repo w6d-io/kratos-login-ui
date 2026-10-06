@@ -21,7 +21,8 @@ export type GateOutcome =
   | { kind: 'continue'; to: string }
   | { kind: 'stepup'; to: string }
   | { kind: 'signin'; to: string }
-  | { kind: 'enrol' }
+  /** joining: groups that wait for this enrolment, to name them on the page. */
+  | { kind: 'enrol'; joining?: string[] }
   /** Stepped up and still at aal1 moments ago: stop bouncing, offer a retry. */
   | { kind: 'stuck' }
   /** jinbe couldn't answer, and this destination was already passed through unchecked moments ago. */
@@ -54,7 +55,7 @@ export async function resolveGate(d: GateDeps): Promise<GateOutcome> {
   if (s.kind === 'unauthenticated') return { kind: 'signin', to: `/login?return_to=${encodeURIComponent(d.destination)}` }
   if (s.kind === 'unavailable') return d.mayContinueUnchecked() ? { kind: 'continue', to: d.destination } : { kind: 'unchecked' }
   if ((!s.required && !d.mustEnrol) || s.aal === 'aal2') return { kind: 'continue', to: d.destination }
-  if (!s.enrolled) return { kind: 'enrol' }
+  if (!s.enrolled) return s.awaitingGroups?.length ? { kind: 'enrol', joining: s.awaitingGroups } : { kind: 'enrol' }
   return d.mayStepUp() ? { kind: 'stepup', to: d.stepUpUrl(d.selfUrl) } : { kind: 'stuck' }
 }
 

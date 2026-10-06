@@ -40,6 +40,7 @@ function TwoStepPageContent() {
   const [view, setView] = useState<'loading' | 'enrol' | 'stuck' | 'unchecked'>('loading')
   const [flow, setFlow] = useState<SettingsFlow | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [joining, setJoining] = useState<string[] | undefined>(undefined)
   const running = useRef(false)
 
   useEffect(() => { setOrigin(window.location.origin) }, [])
@@ -77,7 +78,7 @@ function TwoStepPageContent() {
       // Reached: /welcome no longer needs the remembered destination (it uses it itself).
       if (o.kind === 'continue' && o.to !== `${origin}${WELCOME_PATH}`) forgetDestination(sessionStore())
       if (o.kind === 'continue' || o.kind === 'stepup' || o.kind === 'signin') window.location.assign(o.to)
-      else if (o.kind === 'enrol') loadFlow()
+      else if (o.kind === 'enrol') { setJoining(o.joining); loadFlow() }
       else setView(o.kind)
     })
   }, [destination, selfUrl, origin, loadFlow, mustEnrol])
@@ -97,6 +98,7 @@ function TwoStepPageContent() {
       email={typeof email === 'string' ? email : null}
       destinationName={branding?.displayName ?? null}
       forApp={mustEnrol}
+      joining={joining}
       error={error}
       signOutHref={signOutHref}
     >

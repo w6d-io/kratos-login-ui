@@ -12,7 +12,8 @@ export const SECOND_FACTOR_METHODS = ['totp', 'webauthn', 'lookup_secret'] as co
 export type SecondFactorMethod = (typeof SECOND_FACTOR_METHODS)[number]
 
 export type SecondFactorResult =
-  | { kind: 'status'; required: boolean; enrolled: boolean; methods: SecondFactorMethod[]; aal: 'aal1' | 'aal2' }
+  /** awaitingGroups: groups added before the person enrolled, applied once they have (jinbe awaiting.ts). */
+  | { kind: 'status'; required: boolean; enrolled: boolean; methods: SecondFactorMethod[]; aal: 'aal1' | 'aal2'; awaitingGroups?: string[] }
   | { kind: 'unauthenticated' }
   | { kind: 'unavailable' }
 
@@ -38,6 +39,9 @@ export function parseSecondFactor(body: unknown): SecondFactorResult {
     methods,
     // Anything but an explicit aal2 is treated as the lower level.
     aal: b.aal === 'aal2' ? 'aal2' : 'aal1',
+    ...(Array.isArray(b.awaitingGroups) && b.awaitingGroups.length > 0
+      ? { awaitingGroups: (b.awaitingGroups as unknown[]).filter((g): g is string => typeof g === 'string' && /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/.test(g)) }
+      : {}),
   }
 }
 

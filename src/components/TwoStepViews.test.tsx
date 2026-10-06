@@ -52,6 +52,13 @@ describe('TwoStepUncheckedView', () => {
 })
 
 describe('TwoStepSetupView for an app', () => {
+  it('names the groups the person was added to as the reason, and where they go next', () => {
+    render(<TwoStepSetupView email={null} destinationName="Kuma" signOutHref="/logout" joining={['staff-developers']}><div /></TwoStepSetupView>)
+    expect(screen.getByText(/You were added to staff-developers/)).toBeTruthy()
+    expect(screen.getByText(/that access is yours straight away/)).toBeTruthy()
+    expect(screen.getByText(/go on to Kuma/)).toBeTruthy()
+    expect(screen.queryByText(/administrator access/i)).toBeNull()
+  })
   it('gives the app as the reason, not an administrator role', () => {
     render(<TwoStepSetupView email={null} destinationName={null} signOutHref="/logout" forApp><div /></TwoStepSetupView>)
     expect(screen.getByRole('heading').textContent).toBe('Set up two-step sign-in to connect the app')

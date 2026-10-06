@@ -22,6 +22,9 @@ describe('resolveGate', () => {
   it('privileged account without a second factor → enrolment, never the destination', async () => {
     expect(await resolveGate(deps(st(true, false)))).toEqual({ kind: 'enrol' })
   })
+  it('added to a 2FA group before enrolling → enrolment, naming the groups that wait for it', async () => {
+    expect(await resolveGate(deps({ ...st(true, false), awaitingGroups: ['staff-developers'] } as SecondFactorResult))).toEqual({ kind: 'enrol', joining: ['staff-developers'] })
+  })
   it('privileged account with TOTP at aal1 → step-up that comes back to the gate', async () => {
     const o = await resolveGate(deps(st(true, true)))
     expect(o.kind).toBe('stepup')
@@ -86,6 +89,8 @@ describe('second-factor server client', () => {
   it('reads jinbe\'s answer strictly; anything odd is unavailable', () => {
     expect(parseSecondFactor({ secondFactorRequired: true, hasSecondFactor: false, methods: ['totp', 'bogus'], aal: 'aal1' }))
       .toEqual({ kind: 'status', required: true, enrolled: false, methods: ['totp'], aal: 'aal1' })
+    expect(parseSecondFactor({ secondFactorRequired: true, hasSecondFactor: false, methods: [], aal: 'aal1', awaitingGroups: ['staff-developers', '<b>x</b>', 3] }))
+      .toEqual({ kind: 'status', required: true, enrolled: false, methods: [], aal: 'aal1', awaitingGroups: ['staff-developers'] })
     expect(parseSecondFactor({ secondFactorRequired: 'yes' })).toEqual({ kind: 'unavailable' })
     expect(parseSecondFactor(null)).toEqual({ kind: 'unavailable' })
     expect((parseSecondFactor({ secondFactorRequired: false, hasSecondFactor: true, aal: 'weird' }) as { aal: string }).aal).toBe('aal1')

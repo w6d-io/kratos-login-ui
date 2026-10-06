@@ -16,6 +16,8 @@ interface TwoStepSetupViewProps {
   signOutHref: string
   /** An app is signing in to the account (MCP): the reason is the app, not an administrator role. */
   forApp?: boolean
+  /** Groups the person was added to that wait for this step (jinbe awaitingGroups): the reason, named. */
+  joining?: string[]
 }
 
 /**
@@ -23,7 +25,7 @@ interface TwoStepSetupViewProps {
  * factor and the destination for an account that must have a second factor
  * and has none. There is no skip — the way out is signing out.
  */
-export function TwoStepSetupView({ email, destinationName, error, children, signOutHref, forApp }: TwoStepSetupViewProps) {
+export function TwoStepSetupView({ email, destinationName, error, children, signOutHref, forApp, joining }: TwoStepSetupViewProps) {
   return (
     <FlowCard
       icon={<Icons.Shield size={20} />}
@@ -32,6 +34,11 @@ export function TwoStepSetupView({ email, destinationName, error, children, sign
         <>
           Before an app can act as you, your account needs a second step after your password.
           It takes about two minutes, once — then you’ll go on to choose what the app may do.
+        </>
+      ) : joining?.length ? (
+        <>
+          You were added to {joining.join(', ')}. Its members use a second step after their password: set it up now
+          and that access is yours straight away. It takes about two minutes, once — then you’ll go on to {destinationName ?? 'where you were headed'}.
         </>
       ) : (
         <>
