@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { blindPassGuard, resolveGate, stepUpGuard, type GateDeps } from './two-step'
+import { blindPassGuard, gateJustPassed, markGatePassed, resolveGate, stepUpGuard, type GateDeps } from './two-step'
 import { fetchSecondFactor, parseSecondFactor, type SecondFactorResult } from './second-factor-server'
 
 const DEST = 'https://kuma.test/users'
@@ -115,5 +115,21 @@ describe('resolveGate — an app signing in (must_enrol)', () => {
     expect(await resolveGate({ ...deps(st(false, false)), mustEnrol: true })).toEqual({ kind: 'enrol' })
     expect((await resolveGate({ ...deps(st(false, true)), mustEnrol: true })).kind).toBe('stepup')
     expect(await resolveGate({ ...deps(st(false, true, 'aal2')), mustEnrol: true })).toEqual({ kind: 'continue', to: DEST })
+  })
+})
+
+describe('markGatePassed / gateJustPassed', () => {
+  const mem = () => { const m = new Map<string, string>(); return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => { m.set(k, v) } } }
+  it('lets the next page skip its own check once, for that URL, within 10 s', () => {
+    const s = mem()
+    markGatePassed('https://auth.x/welcome', s, () => 1_000)
+    expect(gateJustPassed('https://auth.x/other', s, () => 2_000)).toBe(false)
+    markGatePassed('https://auth.x/welcome', s, () => 1_000)
+    expect(gateJustPassed('https://auth.x/welcome', s, () => 2_000)).toBe(true)
+    // one use
+    expect(gateJustPassed('https://auth.x/welcome', s, () => 2_000)).toBe(false)
+    markGatePassed('https://auth.x/welcome', s, () => 1_000)
+    expect(gateJustPassed('https://auth.x/welcome', s, () => 12_000)).toBe(false)
+    expect(gateJustPassed('https://auth.x/welcome', null)).toBe(false)
   })
 })

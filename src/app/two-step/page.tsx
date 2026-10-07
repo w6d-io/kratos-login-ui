@@ -10,7 +10,7 @@ import { getTriggerButton } from '@/lib/kratos-flow'
 import { destinationUrl, gateUrl, WELCOME_PATH } from '@/lib/flow-nav'
 import { sessionStore } from '@/lib/flow-nav-browser'
 import { switchAccountUrl } from '@/lib/access'
-import { blindPassGuard, resolveGate, stepUpGuard } from '@/lib/two-step'
+import { blindPassGuard, markGatePassed, resolveGate, stepUpGuard } from '@/lib/two-step'
 import { forgetDestination } from '@/lib/landing'
 import type { SecondFactorResult } from '@/lib/second-factor-server'
 import { useBranding, useBrandingReturnTo } from '@/components/ui/Branding'
@@ -77,6 +77,7 @@ function TwoStepPageContent() {
       running.current = false
       // Reached: /welcome no longer needs the remembered destination (it uses it itself).
       if (o.kind === 'continue' && o.to !== `${origin}${WELCOME_PATH}`) forgetDestination(sessionStore())
+      if (o.kind === 'continue') markGatePassed(o.to, sessionStore())
       if (o.kind === 'continue' || o.kind === 'stepup' || o.kind === 'signin') window.location.assign(o.to)
       else if (o.kind === 'enrol') { setJoining(o.joining); loadFlow() }
       else setView(o.kind)

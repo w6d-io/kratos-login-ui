@@ -7,7 +7,7 @@ import { config } from '@/lib/config'
 import { returnGuard } from '@/lib/access'
 import { destinationUrl, gateUrl, safeReturnTo } from '@/lib/flow-nav'
 import { initFlowUrl } from '@/lib/ory'
-import { resolveGate, stepUpGuard } from '@/lib/two-step'
+import { gateJustPassed, resolveGate, stepUpGuard } from '@/lib/two-step'
 import type { SecondFactorResult } from '@/lib/second-factor-server'
 import { sessionStore } from '@/lib/flow-nav-browser'
 import { forgetDestination, lastSiteChoice, originHosts, recallDestination, rememberSiteChoice, resolveWelcome } from '@/lib/landing'
@@ -32,7 +32,8 @@ function WelcomePageContent() {
   const run = useCallback(async () => {
     // A picker is an exit too: an account that must have a second factor goes through the gate
     // first, however it got here (typed URL, bookmark, back button).
-    if (config.secondFactorGate) {
+    // The two-step page sends here once it has checked: no second check, no second loading screen.
+    if (config.secondFactorGate && !gateJustPassed(`${window.location.origin}/welcome`, sessionStore())) {
       const self = `${window.location.origin}/welcome`
       const g = await resolveGate({
         status: async () => {

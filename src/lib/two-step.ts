@@ -78,6 +78,35 @@ export function stepUpGuard(storage: KeyValueStore | null, now: () => number = D
   return true
 }
 
+const PASSED_KEY = 'two-step:passed'
+const PASSED_WINDOW_MS = 10_000
+
+/**
+ * The gate just let this tab through to `url` (two-step page → /welcome): the page there need not ask
+ * the same question again moments later — a second check and a second loading screen on every sign-in.
+ * Tab-scoped, one use, 10 s; the server-side refusals (jinbe's hook, the gateway) are untouched.
+ */
+export function markGatePassed(url: string, storage: KeyValueStore | null, now: () => number = Date.now): void {
+  try {
+    storage?.setItem(PASSED_KEY, JSON.stringify({ url, at: now() }))
+  } catch {
+    /* no storage: the next page checks again */
+  }
+}
+
+/** Whether the gate let this tab through to `url` moments ago; consumes the mark. */
+export function gateJustPassed(url: string, storage: KeyValueStore | null, now: () => number = Date.now): boolean {
+  try {
+    const raw = storage?.getItem(PASSED_KEY)
+    if (!raw) return false
+    storage?.setItem(PASSED_KEY, '')
+    const v = JSON.parse(raw) as { url?: unknown; at?: unknown }
+    return v.url === url && typeof v.at === 'number' && now() - v.at >= 0 && now() - v.at < PASSED_WINDOW_MS
+  } catch {
+    return false
+  }
+}
+
 const BLIND_WINDOW_MS = 5 * 60_000
 
 /**
