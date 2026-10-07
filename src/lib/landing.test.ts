@@ -41,12 +41,8 @@ describe('resolveWelcome', () => {
     const o = await resolveWelcome(deps({ originHosts: ['nope.example.com', 'pay.example.com'], landingFor }))
     expect(o).toEqual({ kind: 'redirect', to: 'https://pay.example.com/home' })
   })
-  it('exactly one reachable site → straight there', async () => {
-    expect(await resolveWelcome(deps({ mySites: async () => ({ kind: 'sites', sites: [site('a')] }) }))).toEqual({ kind: 'redirect', to: 'https://a.example.com/' })
-  })
-  it('one site but the loop guard tripped → picker instead of bouncing', async () => {
-    const o = await resolveWelcome(deps({ mySites: async () => ({ kind: 'sites', sites: [site('a')] }), mayAutoRedirect: () => false }))
-    expect(o.kind).toBe('choose')
+  it('exactly one reachable site → the picker all the same: a sign-in on the platform stays on its page', async () => {
+    expect(await resolveWelcome(deps({ mySites: async () => ({ kind: 'sites', sites: [site('a')] }) }))).toEqual({ kind: 'choose', sites: [site('a')], lastUsed: null })
   })
   it('several sites → picker, last choice first', async () => {
     const o = await resolveWelcome(deps({ lastChoice: () => 'b' }))

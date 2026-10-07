@@ -6,9 +6,10 @@ import type { MySite, MySitesResult } from './sites-server'
  *   0. the page this tab's sign-in started for, when a hop lost its return_to
  *      (a fresh flow from a link without it) — that exact URL, no picker,
  *   1. the site the visitor came from → its `defaultReturnUrl` (jinbe by-host),
- *   2. the sites the visitor can reach (jinbe /sites/mine): exactly one →
- *      go there, several → "Where to?" picker (last choice first), none →
- *      empty state, jinbe down → neutral retry.
+ *   2. the sites the visitor can reach (jinbe /sites/mine): the "Where to?" picker,
+ *      even for one (last choice first) — a sign-in on the platform itself stays on
+ *      its own page instead of jumping to the only app reachable; none → empty
+ *      state, jinbe down → neutral retry.
  * Every URL is re-checked against the return-URL allow-list server-side.
  */
 
@@ -57,7 +58,6 @@ export async function resolveWelcome(d: WelcomeDeps): Promise<WelcomeOutcome> {
   if (r.kind === 'unauthenticated') return { kind: 'signin', to: `/login?return_to=${encodeURIComponent(d.selfUrl)}` }
   if (r.kind === 'unavailable') return { kind: 'unavailable' }
   if (r.sites.length === 0) return { kind: 'empty' }
-  if (r.sites.length === 1 && d.mayAutoRedirect(r.sites[0].url)) return { kind: 'redirect', to: r.sites[0].url }
   const last = d.lastChoice()
   const lastUsed = last && r.sites.some((s) => s.name === last) ? last : null
   // Last choice first; otherwise jinbe's order (sorted by displayName).
