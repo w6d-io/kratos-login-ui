@@ -188,7 +188,7 @@ function SettingsPageContent() {
       }
       const body = { method: 'profile', traits: traitsObj, csrf_token: getCsrfToken(flow) } as unknown as UpdateSettingsFlowBody
       const token = bot.use(editedEmail)
-      const { data } = await createBrowserClient().updateSettingsFlow({ flow: flow.id, updateSettingsFlowBody: body }, captchaHeaders(token))
+      const { data } = await bot.send(token, (t) => createBrowserClient().updateSettingsFlow({ flow: flow.id, updateSettingsFlowBody: body }, captchaHeaders(t)))
       if (token) bot.reset()
       onSettingsSaved(data, flow, 'profile', () => fetchFlow(flow.id))
     } catch (err: unknown) {

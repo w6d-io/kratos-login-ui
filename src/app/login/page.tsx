@@ -31,7 +31,7 @@ import {
 } from '@/lib/kratos-flow'
 import { extractFlowBanners, detectUrlBanner } from '@/lib/flow-messages'
 import { useBotCheck, useSignInProtection } from '@/components/ui/BotCheck'
-import { captchaHeaders, isTokenRefusal } from '@/lib/sign-in-protection'
+import { captchaHeaders, isTokenRefusal, withToken } from '@/lib/sign-in-protection'
 import { CodeView, LookupView, PasswordView, TotpView, WebAuthnView, type LoginStep } from '@/components/login/LoginViews'
 
 type Step = LoginStep
@@ -219,7 +219,7 @@ function LoginPageContent() {
     setSubmitting(true)
     setNetworkError(null)
     try {
-      const { data } = await createBrowserClient().updateLoginFlow({ flow: flow.id, updateLoginFlowBody: body }, captchaHeaders(token))
+      const { data } = await bot.send(token, (t) => createBrowserClient().updateLoginFlow({ flow: flow.id, updateLoginFlowBody: withToken(body, t) }, captchaHeaders(t)))
       // First factor done with an aal1 session: ask for the second factor
       // now if the identity has one, keeping this flow's return_to.
       if (data.session?.authenticator_assurance_level === 'aal1' && flow.requested_aal !== 'aal2' && !flow.refresh) {
@@ -330,10 +330,10 @@ function LoginPageContent() {
     // A resend is another email: the flow's pass covers one, so it needs a token of its own.
     const [body, token] = withBotCheck({ method: 'code', identifier: idValue, resend: 'code', csrf_token: getCsrfToken(flow) }, await bot.fresh())
     try {
-      await createBrowserClient().updateLoginFlow({
+      await bot.send(token, (t) => createBrowserClient().updateLoginFlow({
         flow: flow.id,
-        updateLoginFlowBody: body as UpdateLoginFlowBody,
-      }, captchaHeaders(token))
+        updateLoginFlowBody: withToken(body, t) as UpdateLoginFlowBody,
+      }, captchaHeaders(t)))
       fetchFlow(flow.id)
     } catch (err: unknown) {
       // Kratos answers a successful resend with 400 + the flow (message 1010014).

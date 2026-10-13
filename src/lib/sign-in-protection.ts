@@ -202,6 +202,25 @@ export function isTokenRefusal(err: unknown): boolean {
 }
 
 /**
+ * The gateway refused the TOKEN before Kratos acted (captcha_invalid: spent, expired, or the flow's
+ * pass ran out; captcha_missing): nothing was emailed or checked, so the same submit may go again
+ * with a new token. Not captcha_unavailable (the provider is down: a new token will not help), and
+ * not the Kratos hook's refusal (Kratos already acted on that submit).
+ */
+export function isRetryableTokenRefusal(err: unknown): boolean {
+  const r = (err as { response?: { status?: number; data?: unknown } } | null)?.response
+  const gate = r ? gateRefusal(r.data, r.status) : null
+  return gate?.id === 'captcha_invalid' || gate?.id === 'captcha_missing'
+}
+
+/** The body with its transient_payload.captcha_token swapped for `token` (left alone when it had none). */
+export function withToken<T>(body: T, token: string | null): T {
+  const tp = (body as { transient_payload?: Record<string, unknown> } | null)?.transient_payload
+  if (!tp || !('captcha_token' in tp)) return body
+  return { ...body, transient_payload: { ...tp, captcha_token: token } } as T
+}
+
+/**
  * A profile save that changes the email: Kratos emails the new address a verification code, so the
  * gateway judges that save under the verification check. Any other save passes without a token.
  */

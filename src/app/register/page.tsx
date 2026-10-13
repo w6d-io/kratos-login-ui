@@ -22,7 +22,7 @@ import { flowContext, resolveKratosError } from '@/lib/flow-nav'
 import { applyNav, errorNavOptions, rememberFlowDestination, rememberFlowOrigin } from '@/lib/flow-nav-browser'
 import { signInUrl } from '@/lib/access'
 import { useBotCheck, useSignInProtection } from '@/components/ui/BotCheck'
-import { captchaHeaders, isTokenRefusal, DEFAULT_PROTECTED_TRAITS, isProtectedTrait, signUpLimitText } from '@/lib/sign-in-protection'
+import { captchaHeaders, isTokenRefusal, withToken, DEFAULT_PROTECTED_TRAITS, isProtectedTrait, signUpLimitText } from '@/lib/sign-in-protection'
 import { offeredSignUpMethods, parseSignUpMethods, type SignUpMethod } from '@/lib/sign-up-methods'
 import { isInvitationLink } from '@/lib/account'
 
@@ -146,10 +146,10 @@ function RegisterPageContent() {
     setSubmitting(true)
     setNetworkError(null)
     try {
-      const { data } = await createBrowserClient().updateRegistrationFlow({
+      const { data } = await bot.send(token, (t) => createBrowserClient().updateRegistrationFlow({
         flow: flow.id,
-        updateRegistrationFlowBody: { method: 'code', traits: traitsBody(), csrf_token: getCsrfToken(flow), ...body } as unknown as UpdateRegistrationFlowBody,
-      }, captchaHeaders(token))
+        updateRegistrationFlowBody: withToken({ method: 'code', traits: traitsBody(), csrf_token: getCsrfToken(flow), ...body }, t) as unknown as UpdateRegistrationFlowBody,
+      }, captchaHeaders(t)))
       if (handleContinueWith(data, flow.return_to || returnTo)) return
       fetchFlow(flow.id)
     } catch (err: unknown) {
@@ -218,7 +218,7 @@ function RegisterPageContent() {
         : { method: 'profile', traits: traitsObj, csrf_token: getCsrfToken(flow) }
       ) as unknown as UpdateRegistrationFlowBody
 
-      const { data } = await createBrowserClient().updateRegistrationFlow({ flow: flow.id, updateRegistrationFlowBody: body }, captchaHeaders(token))
+      const { data } = await bot.send(token, (t) => createBrowserClient().updateRegistrationFlow({ flow: flow.id, updateRegistrationFlowBody: withToken(body, t) }, captchaHeaders(t)))
       if (handleContinueWith(data, flow.return_to || returnTo)) return
       if (hasPassword) fetchFlow(flow.id)
       else void afterDetails(flow.id)
@@ -244,7 +244,7 @@ function RegisterPageContent() {
     const token = bot.use()
     if (token) {
       const body = { method: 'oidc', provider, csrf_token: getCsrfToken(flow), transient_payload: { captcha_token: token } } as unknown as UpdateRegistrationFlowBody
-      createBrowserClient().updateRegistrationFlow({ flow: flow.id, updateRegistrationFlowBody: body }, captchaHeaders(token)).catch((err: unknown) => {
+      bot.send(token, (t) => createBrowserClient().updateRegistrationFlow({ flow: flow.id, updateRegistrationFlowBody: withToken(body, t) }, captchaHeaders(t))).catch((err: unknown) => {
         if (isTokenRefusal(err)) bot.reset()
         applyNav(resolveKratosError(err, errorNavOptions('registration', flowContext(flow), 'Could not start the sign-up. Please try again.')), {
           setFlow: () => fetchFlow(flow.id),

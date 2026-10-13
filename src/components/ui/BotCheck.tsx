@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   botCheckFor,
+  isRetryableTokenRefusal,
   parseSignInProtection,
   UNKNOWN_PROTECTION,
   type BotCheckFlow,
@@ -154,7 +155,17 @@ export interface BotCheck {
    * email). Resets the widget and resolves with its next token; null when the flow asks for none.
    */
   fresh: () => Promise<string | null>
+  /**
+   * One submit with `token`; when the gateway refuses the token itself (isRetryableTokenRefusal: the
+   * flow's pass ran out, the token was spent), asks the widget for a new one and sends it once more.
+   * The gateway refused before Kratos acted, so the second send is safe. `call` gets the token to put
+   * in the header and body (withToken). Still refused, or no token within RETRY_WAIT_MS: the error.
+   */
+  send: <T>(token: string | null, call: (token: string | null) => Promise<T>) => Promise<T>
 }
+
+/** How long a retry waits for the widget's new token (an interactive challenge takes a click). */
+export const RETRY_WAIT_MS = 30_000
 
 /**
  * Everything a flow page needs to carry the bot-check token through one Kratos flow.
@@ -207,6 +218,21 @@ export function useBotCheck(
     return new Promise((resolve) => { waiters.current.push(resolve) })
   }, [enabled, reset])
 
+  const send = useCallback(async <T,>(token: string | null, call: (token: string | null) => Promise<T>): Promise<T> => {
+    try {
+      return await call(token)
+    } catch (err) {
+      if (!enabled || !isRetryableTokenRefusal(err)) throw err
+      const address = bound.current
+      let timer: ReturnType<typeof setTimeout> | undefined
+      const next = await Promise.race([fresh(), new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), RETRY_WAIT_MS) })])
+      clearTimeout(timer)
+      if (!next) throw err
+      bound.current = address
+      return call(next)
+    }
+  }, [enabled, fresh])
+
   // A new flow: the old token's pass belongs to the old one.
   const flowId = opts.flowId ?? null
   const lastFlow = useRef(flowId)
@@ -222,5 +248,5 @@ export function useBotCheck(
   }, [address, reset])
 
   const widget = check ? <BotCheckWidget key={generation} check={check} action={flow} onToken={onToken} /> : null
-  return { widget, token, pending: !!check && !token, reset, use, fresh }
+  return { widget, token, pending: !!check && !token, reset, use, fresh, send }
 }

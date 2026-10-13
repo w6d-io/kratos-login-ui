@@ -98,7 +98,7 @@ function RecoveryPageContent() {
       // No Kratos hook runs when the email is sent: the gateway checks the flow's token
       // (X-Captcha-Token) before Kratos acts. Its pass covers one email: a resend needs a new token.
       const token = resend ? await bot.fresh() : bot.use(email)
-      await createBrowserClient().updateRecoveryFlow({ flow: flow.id, updateRecoveryFlowBody: body }, captchaHeaders(token))
+      await bot.send(token, (t) => createBrowserClient().updateRecoveryFlow({ flow: flow.id, updateRecoveryFlowBody: body }, captchaHeaders(t)))
       fetchFlow(flow.id)
     } catch (err: unknown) {
       if (isTokenRefusal(err)) bot.reset()
@@ -123,10 +123,10 @@ function RecoveryPageContent() {
     setSubmitting(true)
     setNetworkError(null)
     try {
-      const { data } = await createBrowserClient().updateRecoveryFlow({
+      const { data } = await bot.send(bot.use(), (t) => createBrowserClient().updateRecoveryFlow({
         flow: flow.id,
         updateRecoveryFlowBody: { method: 'code', code, csrf_token: getCsrfToken(flow) } as UpdateRecoveryFlowBody,
-      }, captchaHeaders(bot.use()))
+      }, captchaHeaders(t)))
       if (handleContinueWith(data, flow.return_to)) return
       window.location.href = '/settings'
     } catch (err: unknown) {

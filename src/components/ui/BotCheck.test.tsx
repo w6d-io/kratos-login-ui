@@ -33,6 +33,12 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks())
 
 let taken: Array<string | null> = []
+let sent: Array<string | null> = []
+let outcome: unknown = null
+/** A submit stand-in for bot.send: records each token, refuses as told (one answer per call). */
+let answers: unknown[] = []
+const submit = (t: string | null) => { sent.push(t); const a = answers.shift(); return a ? Promise.reject(a) : Promise.resolve('ok') }
+const refused = (id: string, status = 403) => ({ response: { status, data: { error: { id, code: status } } } })
 type ProbeOpts = { flowId?: string | null; address?: string | null; enabled?: boolean }
 function Probe({ p, flow, opts }: { p: SignInProtection | null; flow: 'registration' | 'login'; opts?: ProbeOpts }) {
   const bot = useBotCheck(flow, p, opts)
@@ -43,6 +49,7 @@ function Probe({ p, flow, opts }: { p: SignInProtection | null; flow: 'registrat
       <button onClick={bot.reset}>reset</button>
       <button onClick={() => { taken.push(bot.use(opts?.address)) }}>use</button>
       <button onClick={() => { void bot.fresh().then((t) => { taken.push(t) }) }}>fresh</button>
+      <button onClick={() => { bot.send(bot.use(opts?.address), submit).then((r) => { outcome = r }, (e) => { outcome = e }) }}>send</button>
     </div>
   )
 }
@@ -148,6 +155,47 @@ describe('token lifecycle: one token per flow', () => {
     act(() => screen.getByText('use').click())
     await act(async () => { screen.getByText('fresh').click() })
     expect(taken).toEqual([null, null])
+  })
+})
+
+describe('send: a refused token is replaced once, by itself', () => {
+  beforeEach(() => { sent = []; answers = []; outcome = null })
+  const ready = async () => {
+    render(<Probe p={protection({ registration: true })} flow="registration" opts={{ flowId: 'f1', address: 'a@x.io' }} />)
+    await waitFor(() => expect(rendered).toHaveLength(1))
+    act(() => rendered[0].callback('T1'))
+  }
+
+  it('captcha_invalid (the pass ran out, the token is spent): a new token, the same submit again', async () => {
+    await ready()
+    answers = [refused('captcha_invalid')]
+    act(() => screen.getByText('send').click())
+    await waitFor(() => expect(rendered).toHaveLength(2))
+    await act(async () => { rendered[1].callback('T2') })
+    await waitFor(() => expect(outcome).toBe('ok'))
+    expect(sent).toEqual(['T1', 'T2'])
+  })
+
+  it('only once: a second refusal is the answer', async () => {
+    await ready()
+    const second = refused('captcha_invalid')
+    answers = [refused('captcha_invalid'), second]
+    act(() => screen.getByText('send').click())
+    await waitFor(() => expect(rendered).toHaveLength(2))
+    await act(async () => { rendered[1].callback('T2') })
+    await waitFor(() => expect(outcome).toBe(second))
+    expect(sent).toEqual(['T1', 'T2'])
+  })
+
+  it('anything else is not retried: provider down, rate limit, a wrong code', async () => {
+    for (const err of [refused('captcha_unavailable'), refused('rate_limited', 429), { response: { status: 400, data: { ui: { messages: [{ id: 4000902 }] } } } }]) {
+      cleanup(); rendered = []; sent = []; outcome = null
+      await ready()
+      answers = [err]
+      act(() => screen.getByText('send').click())
+      await waitFor(() => expect(outcome).toBe(err))
+      expect(sent).toEqual(['T1'])
+    }
   })
 })
 

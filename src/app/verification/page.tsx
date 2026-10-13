@@ -94,7 +94,7 @@ function VerificationPageContent() {
       // No Kratos hook runs when the email is sent: the gateway checks the flow's token
       // (X-Captcha-Token) before Kratos acts. Its pass covers one email: a resend needs a new token.
       const token = resend ? await bot.fresh() : bot.use(email)
-      await createBrowserClient().updateVerificationFlow({ flow: flow.id, updateVerificationFlowBody: body }, captchaHeaders(token))
+      await bot.send(token, (t) => createBrowserClient().updateVerificationFlow({ flow: flow.id, updateVerificationFlowBody: body }, captchaHeaders(t)))
       fetchFlow(flow.id)
     } catch (err: unknown) {
       if (isTokenRefusal(err)) bot.reset()
@@ -119,10 +119,10 @@ function VerificationPageContent() {
     setSubmitting(true)
     setNetworkError(null)
     try {
-      const { data } = await createBrowserClient().updateVerificationFlow({
+      const { data } = await bot.send(bot.use(), (t) => createBrowserClient().updateVerificationFlow({
         flow: flow.id,
         updateVerificationFlowBody: { method: 'code', code, csrf_token: getCsrfToken(flow) } as UpdateVerificationFlowBody,
-      }, captchaHeaders(bot.use()))
+      }, captchaHeaders(t)))
       if (handleContinueWith(data, flow.return_to)) return
       fetchFlow(flow.id)
     } catch (err: unknown) {

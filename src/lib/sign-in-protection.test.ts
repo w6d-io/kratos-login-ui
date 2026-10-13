@@ -7,6 +7,8 @@ import {
   isProtectedTrait,
   isBotCheckRefusal,
   isTokenRefusal,
+  isRetryableTokenRefusal,
+  withToken,
   isEmailChange,
   parseSignInProtection,
   signUpLimitText,
@@ -193,5 +195,22 @@ describe('isEmailChange', () => {
     expect(isEmailChange('ann@corp.io', ' Ann@Corp.io ')).toBe(false)
     expect(isEmailChange('ann@corp.io', '')).toBe(false)
     expect(isEmailChange('ann@corp.io', undefined)).toBe(false)
+  })
+})
+
+describe('isRetryableTokenRefusal / withToken', () => {
+  const err = (status: number, data: unknown) => ({ response: { status, data } })
+  it('only the gateway refusing the token before Kratos acted', () => {
+    expect(isRetryableTokenRefusal(err(403, { error: { id: 'captcha_invalid', code: 403 } }))).toBe(true)
+    expect(isRetryableTokenRefusal(err(403, { error: { id: 'captcha_missing', code: 403 } }))).toBe(true)
+    expect(isRetryableTokenRefusal(err(403, { error: { id: 'captcha_unavailable', code: 403 } }))).toBe(false)
+    expect(isRetryableTokenRefusal(err(400, { ui: { messages: [{ id: 4000902 }] } }))).toBe(false)
+    expect(isRetryableTokenRefusal(err(429, { error: { id: 'rate_limited', code: 429 } }))).toBe(false)
+    expect(isRetryableTokenRefusal(new Error('network'))).toBe(false)
+  })
+  it('swaps the token in transient_payload, and leaves a body without one alone', () => {
+    expect(withToken({ code: '1', transient_payload: { captcha_token: 'T1', x: 1 } }, 'T2')).toEqual({ code: '1', transient_payload: { captcha_token: 'T2', x: 1 } })
+    const plain = { code: '1' }
+    expect(withToken(plain, 'T2')).toBe(plain)
   })
 })
